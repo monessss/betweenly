@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>SocialAssistant.Gateway</AssemblyName>
+    <RootNamespace>SocialAssistant.Gateway</RootNamespace>
+  </PropertyGroup>
+</Project>
