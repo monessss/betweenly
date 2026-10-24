@@ -14,6 +14,19 @@ dotnet run --project Gateway.csproj
 
 使用启动配置时默认运行在 Development，监听 `http://127.0.0.1:5080`。从仓库根目录开始时，先执行 `Set-Location Gateway`，让 dotnet 使用本目录 `global.json` 指定的 .NET 8 SDK。
 
+## 前端联调
+
+本地前端约定使用 **3000** 端口；Gateway 的前端 API 入口为 **http://127.0.0.1:5080/api/v1**。
+
+```text
+前端开发地址：http://localhost:3000 或 http://127.0.0.1:3000
+前端 API_BASE_URL：http://127.0.0.1:5080/api/v1
+```
+
+Gateway 已为这两个开发来源启用 `/api/...` 的 CORS 预检、契约请求头和必要响应头读取。开发请求仍需携带下文的 `X-Dev-User-Id`。仓库尚未创建前端应用，3000 是其开发服务端口约定。
+
+允许来源由 `Gateway:Cors:AllowedOrigins` 配置；调整前端端口时同步修改该列表。生产默认列表为空，部署时通过 `Gateway__Cors__AllowedOrigins__0` 等配置提供实际前端来源。此跨域策略不应用于 `/internal/...`。
+
 ## 路由与身份
 
 - `/api/v1/...` 使用契约公共路由白名单，将请求转发给各数据所有者服务。
@@ -80,7 +93,7 @@ node tests/gateway/contract-audit.mjs
 
 冒烟测试使用 5101–5104 和 58080 端口；专项回归使用随机本地端口和虚构密钥，直接读取契约中的 27 个公共路由及 5 个 INTERNAL 接口，结束后清理测试进程。
 
-2026-10-24 验证结果：编译零警告、零错误；冒烟测试通过；专项回归 **25 组通过、0 项偏差**。10 项修复与验证对应关系见 [检查报告](docs/gateway-contract-review.md)。
+2026-10-24 验证结果：编译零警告、零错误；冒烟测试通过；专项回归 **30 组通过、0 项偏差**，其中 5 组覆盖前端 CORS。10 项修复与验证对应关系见 [检查报告](docs/gateway-contract-review.md)。
 
 ## 后续工作
 
