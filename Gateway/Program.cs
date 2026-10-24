@@ -26,6 +26,21 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
 });
 
+builder.Services.AddCors(options => options.AddPolicy("Frontend", policy =>
+{
+    var origins = builder.Configuration
+        .GetSection("Gateway:Cors:AllowedOrigins").Get<string[]>() ?? [];
+    if (origins.Length > 0)
+    {
+        policy.WithOrigins(origins);
+    }
+
+    policy.WithMethods("GET", "POST", "PUT", "PATCH", "DELETE")
+        .WithHeaders("Authorization", "Content-Type", "X-Dev-User-Id",
+            "X-Correlation-Id", "Idempotency-Key", "If-Match")
+        .WithExposedHeaders("X-Correlation-Id", "ETag", "Retry-After", "Location", "Allow");
+}));
+
 builder.Services.AddSingleton<RouteCatalog>();
 builder.Services.AddSingleton<ServiceCredentialValidator>();
 builder.Services.AddSingleton<UserIdentityResolver>();
@@ -67,6 +82,9 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
+app.UseWhen(
+    context => context.Request.Path.StartsWithSegments("/api"),
+    publicApi => publicApi.UseCors("Frontend"));
 app.UseMiddleware<GatewayMiddleware>();
 
 app.MapGet("/healthz", () => Results.Ok(new
