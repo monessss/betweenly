@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betweenly.local/schemas/input.schema.json",
+  "title": "Betweenly analysis input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scenario", "user_goal"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "scenario": {
+      "type": "string",
+      "enum": ["new_connection", "develop_relationship", "specific_difficulty"]
+    },
+    "user_goal": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "background": { "type": "string", "maxLength": 5000 },
+    "user_draft": { "type": "string", "maxLength": 2000 },
+    "messages": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/message" }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/event" }
+    },
+    "preferences": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/preference" }
+    },
+    "user_style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string", "maxLength": 1000 },
+        "example_message_ids": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "content"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^message:[A-Za-z0-9_-]+$" },
+        "role": { "type": "string", "enum": ["user", "other"] },
+        "content": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "occurred_at": { "type": ["string", "null"], "format": "date-time" },
+        "context": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^event:[A-Za-z0-9_-]+$" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "occurred_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "preference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "subject", "category", "value", "source_type"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^preference:[A-Za-z0-9_-]+$" },
+        "subject": { "type": "string", "enum": ["user", "other"] },
+        "category": {
+          "type": "string",
+          "enum": ["interest", "communication_style", "humor", "boundary", "context_limit"]
+        },
+        "value": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "source_type": {
+          "type": "string",
+          "enum": ["explicit_statement", "user_report", "observed_behavior", "unconfirmed_inference"]
+        },
+        "source_refs": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "applicable_context": { "type": "string", "maxLength": 1000 },
+        "recorded_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    }
+  }
+}
+
