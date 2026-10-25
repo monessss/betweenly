@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" width="400" height="420" fill="none">
+  <!-- 核心图形：基于 (8,15,17) 勾股公切构造，100% 切线连续 -->
+  <g transform="translate(68, 18) scale(1.1)" fill="#141619">
+    <!-- 左侧个体：大圆 R=34 与小圆 r=17 的外公切包络 -->
+    <path d="M 62 72 A 34 34 0 1 1 126 88 L 94 148 A 17 17 0 0 1 62 140 Z" />
+    <!-- 右侧个体：绕中心 (120,120) 180° 中心对称错位 -->
+    <path d="M 178 168 A 34 34 0 1 1 114 152 L 146 92 A 17 17 0 0 1 178 100 Z" />
+  </g>
+
+  <!-- 英文主标 -->
+  <text x="200" y="292" text-anchor="middle" fill="#141619" font-family="-apple-system, BlinkMacSystemFont, &#39;Inter&#39;, &#39;Helvetica Neue&#39;, sans-serif" font-size="44" font-weight="700" letter-spacing="-0.03em">Betweenly</text>
+
+  <!-- 中文副标 -->
+  <text x="200" y="342" text-anchor="middle" fill="#1E2024" font-family="&#39;PingFang SC&#39;, &#39;Hiragino Sans GB&#39;, &#39;Noto Sans SC&#39;, &#39;Microsoft YaHei&#39;, sans-serif" font-size="28" font-weight="500" letter-spacing="0.06em">之间</text>
+</svg>

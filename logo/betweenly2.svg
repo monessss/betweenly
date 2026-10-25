@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 110" width="440" height="110" fill="none">
+  <!-- 缩放后的公切图形 -->
+  <g transform="translate(18, -5) scale(0.5)" fill="#141619">
+    <path d="M 62 72 A 34 34 0 1 1 126 88 L 94 148 A 17 17 0 0 1 62 140 Z" />
+    <path d="M 178 168 A 34 34 0 1 1 114 152 L 146 92 A 17 17 0 0 1 178 100 Z" />
+  </g>
+
+  <!-- 英文与中文横排 -->
+  <text x="122" y="66" fill="#141619" font-family="-apple-system, BlinkMacSystemFont, &#39;Inter&#39;, &#39;Helvetica Neue&#39;, sans-serif" font-size="34" font-weight="700" letter-spacing="-0.03em">Betweenly</text>
+
+  <line x1="298" y1="38" x2="298" y2="70" stroke="#D4D2CD" stroke-width="1.5" stroke-linecap="round" />
+
+  <text x="316" y="64" fill="#3F3F46" font-family="&#39;PingFang SC&#39;, &#39;Hiragino Sans GB&#39;, &#39;Noto Sans SC&#39;, sans-serif" font-size="23" font-weight="500" letter-spacing="0.08em">之间</text>
+</svg>

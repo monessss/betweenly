@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+  <ItemGroup><Content Include="../contracts/analysis-output.schema.json" Link="analysis-output.schema.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+</Project>

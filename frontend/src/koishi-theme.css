@@ -1,0 +1,78 @@
+/*!
+ * Adapted theme tokens and console dimensions from Koishi WebUI.
+ * Copyright (c) Shigma and Koishi contributors.
+ * Source: https://github.com/koishijs/webui/tree/1dc5c0e1c76a207c2ec48697d4b56364cfe28dce/packages/client/app/styles
+ * Upstream license: AGPL-3.0. See ../public/licenses/koishi-webui-AGPL-3.0.txt.
+ * Changes: CSS-only tokens, data-theme selectors, Betweenly aliases, shared radius and responsive sidebar width.
+ */
+:root {
+  --radius: 12px;
+  --sidebar-size: 232px;
+  --activity-width: 4rem;
+  --aside-width: 17.5rem;
+  --header-height: 3rem;
+  --footer-height: 1.75rem;
+  --bg0: #ffffff;
+  --bg1: #f9f9fa;
+  --bg2: #f0f0f2;
+  --bg3: #e3e3e5;
+  --fg1: #28282c;
+  --fg2: #68686c;
+  --fg3: #8b8b91;
+  --k-card-bg: var(--bg0);
+  --k-card-border: var(--bg0);
+  --k-card-shadow: 0 4px 8px -4px rgb(0 0 0 / 15%);
+  --k-side-bg: var(--bg1);
+  --k-main-bg: var(--bg1);
+  --k-activity-bg: var(--bg2);
+  --k-hover-bg: var(--bg3);
+  --k-color-primary: #409eff;
+  --k-color-primary-shade: #398ee6;
+  --k-color-primary-fade: #409eff19;
+  --k-color-divider: #e0e4e8;
+  --k-color-border: #c8c9cc;
+  --k-color-success: #67c23a;
+  --k-color-warning: #e49400;
+  --k-color-danger: #f56c6c;
+  --k-color-primary-soft: #ecf5ff;
+  --k-color-warning-soft: #fdf6ec;
+  --k-color-danger-soft: #fef0f0;
+  --input-bg: #fff;
+  --input-border: #dcdfe6;
+  --green: var(--k-color-primary);
+  --muted: var(--fg3);
+  --line: var(--k-color-divider);
+  --soft: var(--k-color-primary-fade);
+  --font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-family-code: Consolas, Monaco, monospace;
+}
+html[data-theme=dark] {
+  color-scheme: dark;
+  --bg0: #000000;
+  --bg1: #1e1e20;
+  --bg2: #252529;
+  --bg3: #313136;
+  --fg1: #ededeb;
+  --fg2: #b1b1b0;
+  --fg3: #96969a;
+  --k-card-bg: var(--bg2);
+  --k-card-border: #52525980;
+  --k-side-bg: var(--bg2);
+  --k-main-bg: #1e1e20;
+  --k-activity-bg: #18181b;
+  --k-color-divider: #52525980;
+  --k-color-border: #525259cc;
+  --k-color-primary: #a08aff;
+  --k-color-primary-shade: #8a70ed;
+  --k-color-primary-fade: #7459ff22;
+  --k-color-success: #3ba55e;
+  --k-color-warning: #f9af1b;
+  --k-color-danger: #ff7979;
+  --k-color-primary-soft: #343047;
+  --k-color-warning-soft: #3a3225;
+  --k-color-danger-soft: #402b2d;
+  --input-bg: #29292e;
+  --input-border: #4c4c54;
+}
+@media(max-width:1150px){:root{--aside-width:14rem}}
+@media(max-width:768px){:root{--activity-width:3.5rem;--aside-width:17rem}}

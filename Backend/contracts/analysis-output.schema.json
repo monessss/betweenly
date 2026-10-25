@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betweenly.local/contracts/analysis-output/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "contextUsedRefs", "observations", "uncertainties", "recommendation", "replyOptions", "draftRevision", "responseHandling", "clarifyingQuestions", "engineVersion", "createdAt"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "status": {"enum": ["OK", "NEEDS_CONTEXT", "CANNOT_ADVISE"]},
+    "contextUsedRefs": {"$ref": "#/$defs/refs"},
+    "observations": {"type": "array", "maxItems": 20, "items": {"type": "object", "additionalProperties": false, "required": ["statement", "kind", "evidenceRefs"], "properties": {
+      "statement": {"type": "string", "minLength": 1, "maxLength": 1000},
+      "kind": {"enum": ["FACT", "INFERENCE"]}, "evidenceRefs": {"$ref": "#/$defs/refs"}
+    }}},
+    "uncertainties": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/text"}},
+    "affinityAssessment": {"type": ["object", "null"], "additionalProperties": false, "required": ["score", "confidence", "summary", "evidence", "uncertainties"], "properties": {
+      "score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+      "confidence": {"enum": ["LOW", "MEDIUM", "HIGH"]},
+      "summary": {"type": "string", "minLength": 1, "maxLength": 500},
+      "evidence": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": false, "required": ["signal", "description", "evidenceRefs"], "properties": {
+        "signal": {"enum": ["POSITIVE", "NEGATIVE", "AMBIGUOUS"]}, "description": {"type": "string", "minLength": 1, "maxLength": 500}, "evidenceRefs": {"$ref": "#/$defs/refs"}
+      }}},
+      "uncertainties": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/text"}}
+    }},
+    "recommendation": {"type": ["object", "null"], "additionalProperties": false, "required": ["actionType", "title", "reason", "evidenceRefs", "actionTags", "appliesWhen", "alternatives"], "properties": {
+      "actionType": {"$ref": "#/$defs/action"}, "title": {"type": "string", "minLength": 1, "maxLength": 200},
+      "reason": {"type": "string", "minLength": 1, "maxLength": 500}, "evidenceRefs": {"$ref": "#/$defs/refs"},
+      "actionTags": {"$ref": "#/$defs/tags"}, "appliesWhen": {"$ref": "#/$defs/nullableText"},
+      "alternatives": {"type": "array", "maxItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["actionType", "title", "appliesWhen", "actionTags"], "properties": {
+        "actionType": {"$ref": "#/$defs/action"}, "title": {"type": "string", "minLength": 1, "maxLength": 200}, "appliesWhen": {"$ref": "#/$defs/text"}, "actionTags": {"$ref": "#/$defs/tags"}
+      }}}
+    }},
+    "replyOptions": {"type": "array", "maxItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["optionId", "text", "style", "evidenceRefs", "appliesWhen"], "properties": {
+      "optionId": {"type": "string", "minLength": 1, "maxLength": 100}, "text": {"type": "string", "minLength": 1, "maxLength": 1000},
+      "style": {"type": "string", "minLength": 1, "maxLength": 100}, "evidenceRefs": {"$ref": "#/$defs/refs"}, "appliesWhen": {"$ref": "#/$defs/nullableText"}
+    }}},
+    "draftRevision": {"type": ["object", "null"], "additionalProperties": false, "required": ["text", "changes"], "properties": {
+      "text": {"type": "string", "minLength": 1, "maxLength": 2000}, "changes": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/text"}}
+    }},
+    "responseHandling": {"type": "array", "maxItems": 4, "items": {"type": "object", "additionalProperties": false, "required": ["scenario", "guidance"], "properties": {
+      "scenario": {"enum": ["ACCEPTS", "AMBIGUOUS", "DECLINES", "NO_RESPONSE"]}, "guidance": {"$ref": "#/$defs/text"}
+    }}},
+    "clarifyingQuestions": {"type": "array", "maxItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["question", "reason", "fieldHint"], "properties": {
+      "question": {"$ref": "#/$defs/text"}, "reason": {"$ref": "#/$defs/text"},
+      "fieldHint": {"enum": ["RELATIONSHIP_CONTEXT", "MESSAGE_CONTENT", "EVENT_RESULT", "USER_GOAL", "PREFERENCE_OR_BOUNDARY", "OTHER"]}
+    }}},
+    "cannotAdviseReason": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {
+      "code": {"enum": ["BOUNDARY_OVERRIDE", "COERCION_OR_PRESSURE", "DECEPTION", "PRIVACY_VIOLATION", "THIRD_PARTY_MONITORING", "UNVERIFIABLE_EXTERNAL_FACT", "OUT_OF_SCOPE"]}, "message": {"$ref": "#/$defs/text"}
+    }},
+    "engineVersion": {"type": "string", "minLength": 1, "maxLength": 200}, "createdAt": {"type": "string", "minLength": 1, "maxLength": 64}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "nullableText": {"type": ["string", "null"], "minLength": 1, "maxLength": 1000},
+    "refs": {"type": "array", "maxItems": 400, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 100}},
+    "action": {"enum": ["ASK_FOLLOW_UP", "CONTINUE_TOPIC", "SHARE_REAL_EXPERIENCE", "PROPOSE_SPECIFIC_INVITATION", "PREPARE_MEETING", "EXPRESS_INTEREST", "CLARIFY", "APOLOGIZE", "SLOW_DOWN", "END_CONVERSATION", "GATHER_CONTEXT", "NO_ACTION"]},
+    "tags": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"enum": ["CONTACT", "INVITE", "EXPRESS_INTEREST", "USE_NICKNAME", "DISCUSS_TOPIC", "MENTION_LOCATION", "PUBLIC_MENTION", "PHYSICAL_CONTACT"]}}
+  }
+}

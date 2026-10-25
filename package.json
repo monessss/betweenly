@@ -1,0 +1,22 @@
+{
+  "name": "betweenly-desktop",
+  "productName": "Betweenly",
+  "version": "0.1.0",
+  "description": "Betweenly 桌面版",
+  "author": "Betweenly",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.mjs",
+  "scripts": {
+    "desktop:prepare": "node desktop/scripts/prepare.mjs",
+    "desktop:dev": "node desktop/scripts/dev.mjs",
+    "desktop:test": "node --test desktop/tests/*.test.mjs",
+    "desktop:pack": "node desktop/scripts/package.mjs --dir",
+    "desktop:dist": "npm run desktop:prepare && node desktop/scripts/package.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "undici": "7.24.4"
+  }
+}

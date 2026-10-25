@@ -1,0 +1,13 @@
+Betweenly frontend includes a Koishi WebUI-derived theme.
+
+Theme source: https://github.com/koishijs/webui
+Revision: 1dc5c0e1c76a207c2ec48697d4b56364cfe28dce
+Authors: Shigma and Koishi contributors
+Copyright (c) Shigma and Koishi contributors.
+License: AGPL-3.0, see /licenses/koishi-webui-AGPL-3.0.txt
+
+Adapted source: src/koishi-theme.css
+Source locations and changes are documented in THIRD_PARTY_NOTICES.md in the frontend source tree.
+
+Koishi core repository (reference only): https://github.com/koishijs/koishi
+MIT license notice retained at /licenses/koishi-MIT.txt.
