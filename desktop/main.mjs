@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { DesktopRuntime } from './runtime.mjs';
 import { APP_ORIGIN, trustedUrl, makeProtocolHandler } from './protocol.mjs';
+import { createThemeIcons, followThemeIcon } from './theme-icon.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 app.setName('Betweenly');
@@ -43,11 +44,13 @@ async function start() {
   local.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !trustedUrl(details.url) && !details.url.startsWith('devtools:') }));
   local.protocol.handle('betweenly', makeProtocolHandler({ assets: join(root, 'frontend/dist'), startup: join(root, 'desktop/startup.html'), runtime }));
   Menu.setApplicationMenu(null);
+  const icons = createThemeIcons(join(root, 'frontend/dist/brand/betweenly-icon.png'));
   window = new BrowserWindow({
     width: 1280, height: 820, minWidth: 780, minHeight: 600, title: 'Betweenly',
-    icon: join(root, 'frontend/dist/brand/betweenly-icon.png'), backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e20' : '#f9f9fa',
+    icon: nativeTheme.shouldUseDarkColors ? icons.dark : icons.light, backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e20' : '#f9f9fa',
     webPreferences: { session: local, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, devTools: !app.isPackaged }
   });
+  followThemeIcon(window, nativeTheme, icons);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (!trustedUrl(url)) event.preventDefault(); });
   window.webContents.on('will-attach-webview', event => event.preventDefault());

@@ -9,5 +9,5 @@ async function run(arguments_) {
 }
 try {
   await run(['node_modules/electron/install.js']);
-  await run(['node_modules/electron-builder/out/cli/cli.js', '--config', 'desktop/builder.cjs', '--win', '--x64', '--publish', 'never', ...(process.argv.includes('--dir') ? ['--dir'] : [])]);
+  await run(['node_modules/electron-builder/out/cli/cli.js', '--config', 'desktop/builder.cjs', '--win', '--x64', '--publish', 'never', ...(process.argv.includes('--installer') ? [] : ['--dir'])]);
 } catch (error) { console.error(error.message); process.exitCode = 1; }

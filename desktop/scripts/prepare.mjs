@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { configureNetwork } from './network.mjs';
+import { clearGenerated, prepareDotnet } from './runtime-bundle.mjs';
 
 configureNetwork();
 
@@ -47,16 +48,23 @@ async function main() {
   await cp(join(root, 'desktop/runtime-host.py'), join(bundle, 'runtime-host.py'));
   const response = await fetch('https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json', { signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error('.NET 版本信息下载失败');
-  const runtimeVersion = (await response.json())['latest-runtime'];
-  if (!/^8\.0\.\d+$/.test(runtimeVersion)) throw new Error('.NET 版本信息无效');
+  const dotnet = await prepareDotnet({ root, bundle, downloads, metadata: await response.json(), run, environment });
+  const runtimeVersion = dotnet.version;
   if (!process.argv.includes('--skip-publish')) {
+    const published = join(root, '.runtime/desktop-services-publish');
+    await clearGenerated(root, published);
+    await mkdir(published, { recursive: true });
     const projects = [['Backend/ExpressionStyleService/ExpressionStyleService.csproj', 'ExpressionStyleService'], ['Backend/ContactContextService/ContactContextService.csproj', 'ContactContextService'], ['Backend/AdviceService/AdviceService.csproj', 'AdviceService'], ['Backend/WeChatAssistant/WeChatAssistant.csproj', 'WeChatAssistant'], ['Gateway/Gateway.csproj', 'Gateway']];
     for (const [project, name] of projects) {
-      console.log('Publishing self-contained ' + name + ' (.NET ' + runtimeVersion + ')');
-      await run('dotnet', ['publish', join(root, project), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--nologo', '-p:RuntimeFrameworkVersion=' + runtimeVersion, '-p:NuGetAudit=false', '-p:DebugType=None', '-p:RestoreConfigFile=' + join(root, 'desktop/scripts/NuGet.Config'), '-o', join(bundle, 'services', name)]);
+      console.log('Publishing ' + name + ' for shared private .NET ' + runtimeVersion);
+      await run('dotnet', ['publish', join(root, project), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '--nologo', '-p:RuntimeFrameworkVersion=' + runtimeVersion, '-p:NuGetAudit=false', '-p:DebugType=None', '-p:RestoreConfigFile=' + join(root, 'desktop/scripts/NuGet.Config'), '-o', join(published, name)]);
     }
+    await clearGenerated(root, join(bundle, 'services'));
+    await rename(published, join(bundle, 'services'));
+  } else if (existsSync(join(bundle, 'services/Gateway/coreclr.dll'))) {
+    throw new Error('旧版独立运行库布局需要先执行一次完整的 desktop:prepare。');
   }
-  await writeFile(join(bundle, 'manifest.json'), JSON.stringify({ platform: 'win-x64', python: pythonVersion, pythonSha256: pythonHash, dotnet: runtimeVersion, createdAt: new Date().toISOString() }, null, 2));
+  await writeFile(join(bundle, 'manifest.json'), JSON.stringify({ platform: 'win-x64', layout: 'private-dotnet-v1', python: pythonVersion, pythonSha256: pythonHash, dotnet: runtimeVersion, dotnetComponents: dotnet.components, createdAt: new Date().toISOString() }, null, 2));
   console.log('Desktop resources prepared: ' + bundle);
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -7,6 +7,7 @@ module.exports = {
   extraResources: [{ from: '.runtime/desktop-bundle', to: 'backend', filter: ['**/*', '!**/*.pdb', '!**/__pycache__/**'] }],
   asar: true,
   npmRebuild: false,
+  electronLanguages: ['zh-CN', 'zh-TW', 'en-US'],
   win: { target: ['nsis'], icon: 'frontend/public/brand/betweenly-icon.png' },
   nsis: {
     oneClick: false,

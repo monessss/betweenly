@@ -37,7 +37,8 @@ export class DesktopRuntime extends EventEmitter {
     this.token = randomBytes(32).toString('hex');
     const serviceKeys = names.map(() => randomBytes(24).toString('hex'));
     const adviceKey = randomBytes(24).toString('hex'), contextKey = randomBytes(24).toString('hex');
-    const environment = { ...cleanEnvironment(), DOTNET_ENVIRONMENT: 'Production', ASPNETCORE_ENVIRONMENT: 'Production', DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1' };
+    const dotnetRoot = join(this.bundle, 'dotnet');
+    const environment = { ...cleanEnvironment(), DOTNET_ENVIRONMENT: 'Production', ASPNETCORE_ENVIRONMENT: 'Production', DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_ROOT: dotnetRoot, DOTNET_ROOT_X64: dotnetRoot, DOTNET_MULTILEVEL_LOOKUP: '0' };
     const python = join(this.bundle, 'python', 'python.exe');
     const services = [];
     for (const [index, project] of ['ExpressionStyleService', 'ContactContextService', 'AdviceService'].entries()) {
@@ -63,7 +64,7 @@ export class DesktopRuntime extends EventEmitter {
     }
     const gatewayCwd = join(this.bundle, 'services', 'Gateway');
     services.push({ name: 'gateway', executable: join(gatewayCwd, 'SocialAssistant.Gateway.exe'), arguments: ['--urls', this.gatewayUrl], cwd: gatewayCwd, environment: gatewayEnvironment });
-    for (const file of [python, join(this.bundle, 'runtime-host.py'), ...services.map(item => item.executable)]) {
+    for (const file of [python, join(dotnetRoot, 'dotnet.exe'), join(this.bundle, 'runtime-host.py'), ...services.map(item => item.executable)]) {
       if (!existsSync(file)) throw new Error('桌面运行文件不完整，请重新构建或安装 Betweenly。');
     }
     this.host = spawn(python, ['-u', join(this.bundle, 'runtime-host.py')], { cwd: this.bundle, env: cleanEnvironment(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });

@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { DesktopRuntime } from '../runtime.mjs';
+import { execFileSync } from 'node:child_process';
 
 test('published desktop services authenticate locally and stop as one process tree', { skip: process.platform !== 'win32' || !existsSync('.runtime/desktop-bundle/manifest.json'), timeout: 150000 }, async t => {
   await mkdir(resolve('.runtime'), { recursive: true });
@@ -15,8 +16,13 @@ test('published desktop services authenticate locally and stop as one process tr
   for (const headers of [{}, { 'X-Dev-User-Id': '7bc4918a-9079-4ea2-9e8e-369ad79a9f20' }, { 'X-Desktop-Token': 'invalid' }]) assert.equal((await fetch(url, { headers })).status, 401);
   const response = await fetch(url, { headers: { 'X-Desktop-Token': runtime.token } });
   assert.equal(response.status, 200); assert.deepEqual((await response.json()).data, []);
+  const modules = execFileSync(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', "$values = foreach($processId in ($env:BETWEENLY_TEST_PIDS -split ',')) { (Get-Process -Id ([int]$processId)).Modules | Where-Object ModuleName -eq 'coreclr.dll' | ForEach-Object FileName }; ConvertTo-Json -InputObject @($values) -Compress"], { encoding: 'utf8', windowsHide: true, env: { ...process.env, BETWEENLY_TEST_PIDS: runtime.pids.join(',') } });
+  const paths = JSON.parse(modules.trim());
+  assert.equal(paths.length, 4, 'all four .NET services must be checked');
+  const privateRoot = resolve('.runtime/desktop-bundle/dotnet').toLowerCase();
+  for (const path of paths) assert.ok(resolve(path).toLowerCase().startsWith(privateRoot + '\\'), 'services must load the bundled runtime instead of an installed runtime');
   const helper = await fetch(runtime.gatewayUrl + '/api/v1/wechat-import/status', { headers: { 'X-Desktop-Token': runtime.token } });
-  assert.equal(helper.status, 200, 'self-contained WeChat EXE must launch without an installed dotnet command');
+  assert.equal(helper.status, 200, 'WeChat EXE must launch using the bundled private runtime');
   assert.equal(typeof (await helper.json()).data.available, 'boolean');
   assert.equal(runtime.pids.length, 5);
   const pids = [...runtime.pids, runtime.host.pid];
