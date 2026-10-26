@@ -1,5 +1,15 @@
 # Gateway
 
+## UserService / AuthService
+
+正式网页账号入口使用 `Gateway__AccountAuth__Enabled=true`，同时关闭 DevelopmentAuth 和 DesktopAuth。注册验证码 `POST /api/v1/auth/registration-codes`、密码找回发码 `POST /api/v1/auth/password-reset-codes`、重置 `POST /api/v1/auth/password-resets`、注册 `POST /api/v1/auth/registrations`、登录 `POST /api/v1/auth/sessions`、刷新 `POST /api/v1/auth/tokens` 为显式匿名白名单；其他公开接口要求 Bearer Token，经 AuthService 私有内省后取得 userId/sessionId。认证服务故障返回 503，不能回退到开发身份。`/internal/v1/auth/introspections` 不提供网关公共路由。
+
+UserService 负责 `/api/v1/users/me`。AuthService 通过服务密钥和 acting-user 作用域调用 `POST /internal/v1/users` 创建资料，其他调用方不能调用该内部接口。外部的 Authorization、Cookie、X-User-Id、X-Session-Id、X-Caller-Service 及服务身份头不会直接传给业务服务，Gateway 只注入验证后的身份。
+
+配置必须包含 `auth-service`、`user-service` 下游的 BaseUrl/GatewayKey（至少 32 字符），以及 `Gateway__ServiceCredentials__AuthService`。账号模式默认关闭，保留已有本地 MVP/桌面启动方式。完整启动、MySQL 建表及接口说明见 [AuthService](../Backend/AuthService/README.md)。
+
+部署在反向代理之后时，仅通过 `Gateway__TrustedProxies__0` 等配置指定可信代理 IP；未配置时不信任客户端自带 Forwarded/X-Forwarded-For。配置后最多处理一层转发，鉴权限流使用确认后的客户端 IP。浏览器 Origin 仍需在 Cors.AllowedOrigins 中明确允许，公网入口提供 HTTPS。
+
 Betweenly 的 C#/.NET 网关，契约依据为根目录 [contract.md](../contract.md)。工程、构建配置、测试和文档均位于本目录，可独立构建；程序集和命名空间为 `SocialAssistant.Gateway`。
 
 ## 构建与启动
@@ -23,7 +33,7 @@ dotnet run --project Gateway.csproj
 前端 API_BASE_URL：http://127.0.0.1:5080/api/v1
 ```
 
-Gateway 已为这两个开发来源启用 `/api/...` 的 CORS 预检、契约请求头和必要响应头读取。开发请求仍需携带下文的 `X-Dev-User-Id`。仓库尚未创建前端应用，3000 是其开发服务端口约定。
+Gateway 已为这两个开发来源启用 `/api/...` 的 CORS 预检、契约请求头和必要响应头读取。开发请求仍需携带下文的 `X-Dev-User-Id`。前端位于根目录 `frontend`，业务服务位于 `Backend`；可通过根目录 `scripts/start-mvp.ps1` 一起启动。
 
 允许来源由 `Gateway:Cors:AllowedOrigins` 配置；调整前端端口时同步修改该列表。生产默认列表为空，部署时通过 `Gateway__Cors__AllowedOrigins__0` 等配置提供实际前端来源。此跨域策略不应用于 `/internal/...`。
 
@@ -42,6 +52,8 @@ X-Dev-User-Id: 7bc4918a-9079-4ea2-9e8e-369ad79a9f20
 ```
 
 开发身份同时要求实际环境为 `Development` 且 `Gateway:DevelopmentAuth:Enabled=true`。即使非开发环境误开此配置，也不会接受开发身份头。正式 Bearer 认证方案仍为 OWNER-TBD，当前非开发环境拒绝公共请求。
+
+Electron 桌面运行是独立的本地身份例外：`Gateway:DesktopAuth:Enabled=true` 时，仅接受回环连接和本次启动生成的 `X-Desktop-Token`，用户固定为 `Gateway:DesktopAuth:UserId`；不回退开发身份。令牌由 Electron 主进程持有，通过 `betweenly://app/api/v1` 代理注入，渲染页面不可读取。Gateway 向下游转发时剥离此令牌。桌面模式不会开放 INTERNAL 路由，也不代表已实现远程用户登录。
 
 内部调用示例：
 

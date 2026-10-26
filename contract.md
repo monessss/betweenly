@@ -276,7 +276,7 @@ Python 服务失败时不能由 C# 使用模板文本伪装成正常分析结果
 | `X-User-Id` | Gateway -> 业务服务 | 由已验证用户身份产生；外部同名头必须被丢弃 |
 | `X-Gateway-Key` | Gateway -> 业务服务 | 目标服务独立密钥；浏览器和调用方服务不得自行注入 |
 
-身份认证方式属于 `OWNER-TBD`。无论采用何种方案，持久化第三方聊天背景前必须具备用户隔离和注销能力。
+网页账号模式采用 AuthService 服务端不透明 Bearer 令牌，Gateway 通过私有内省逐次验证会话并注入受信用户身份；注册为用户名、邮箱、密码、challengeId 和六位 verificationCode，须先通过匿名 POST /api/v1/auth/registration-codes 获取验证码；登录为邮箱与密码。验证码 10 分钟有效、60 秒可重发、最多 5 次错误，重发使旧验证码失效。已有账号可通过 Bearer POST /auth/email-verification-requests 与 POST /auth/email-verifications 验证当前邮箱。找回密码使用匿名 POST /api/v1/auth/password-reset-codes（email）和 POST /api/v1/auth/password-resets（email、challengeId、verificationCode、newPassword）；只接受已验证的有效账号，未知/未验证邮箱获得相同结构的条件性回执。找回验证码独立绑定用途，重置成功 204，原子消费验证码、更新密码并撤销所有旧会话。新注册和修改后的密码为 6–128 个字符；登录及验证当前密码兼容已有密码（上限 128 字符）。接口及令牌轮换规则见 [AuthService](Backend/AuthService/README.md)，用户资料规则见 [UserService](Backend/UserService/README.md)。开发/桌面身份仅在显式对应模式可用，与网页账号模式互斥。账号注销仍属于后续功能，现有 context-data 清除接口不等同于账号注销。
 
 ### 4.2 公共数据类型
 
@@ -1485,8 +1485,16 @@ project/
 这是 AnalysisService 原有“无账号数据持久化职责”的本地运行配置例外：仅保存由当前 Windows 账户 DPAPI 加密、绑定逻辑用户的模型凭证，目录由 `MODEL_CREDENTIAL_DIRECTORY` 指定；不保存额外聊天、联系人、建议或表达习惯。页面不把密钥写入 Settings/localStorage。保存的 DeepSeek 密钥优先于 `DEEPSEEK_API_KEY`；保存的 Jev 密钥启用该用户的 Jev 复核并优先于 `TYPESAFE_API_KEY`；无本地覆盖则保留原环境变量与 `JEV_ENABLED` 行为。每次分析只使用该用户的独立凭证快照，密钥不进入模型提示词、输出、日志或建议缓存。环境变量和本地密钥均未配置时仍可启动并进入设置；发起分析时返回 `503 MODEL_UNAVAILABLE`。Windows 本地加密不可用、密文损坏或目录不可写返回 `503 CREDENTIAL_STORE_UNAVAILABLE`，不降级明文保存。清空社交背景和表达习惯不会清空本地模型凭证；需要移除本地覆盖时单独 PATCH 对应字段为 null。其他操作系统暂不支持页面持久化凭证，仍支持环境变量配置。
 
 
+## 图片消息增补（2026-10-26）
+
+消息创建/更新增加可选字段 `image`，旧客户端遗漏时默认 null，PATCH 遗漏时保留旧附件。非 null 时严格为 `{dataUrl, width, height}`：仅接受 `data:image/jpeg;base64,...`，解码后最多 256KiB；JPEG 签名与 SOF 尺寸需有效，声明尺寸必须与文件一致，宽高各为 1–1600 的整数。不接受远程图片 URL、SVG、额外字段或客户端提交的识别结果。附图消息允许 `text=""`；无图片时仍要求非空文字。移除最后的图片且无文字返回 400。附件与消息同属用户、联系人、版本及删除生命周期，不另设公开文件地址。
+
+前端接受不超过 8MiB 的 JPEG/PNG/WebP，解码后最多 4000 万像素；重编码 JPEG 移除 EXIF 等元数据，压缩到最长边 1600px 且不超过 256KiB。单次分析最多选 2 张图片，超限返回 413 INPUT_TOO_LARGE；原有 1MiB 请求限制保留，100KB 文本上下文预算不含图片 Base64。
+
+AnalysisService 在同一 60 秒分析预算内，至多增加一次包含所选全部图片的 DeepSeek 视觉请求。识别结果逐条核对 messageId，描述最多 1200 字，不确定性最多 5 项、每项 200 字；异常或格式错误直接报错，不降级忽略图片。生成及 Jev 接收同一份剥离 Base64、带 `imageAnalysis.sourceType=MODEL_INFERENCE` 的上下文。图片解读不是对方原话或确认事实，不能由照片认定人物身份、心理或好感；结果标记 vision-1.0 并保留识别误差提示。原始图像不进入日志、Jev 或自动表达习惯样本。
+
 ## Electron 本地桌面运行增补（2026-10-25）
 
 Windows x64 桌面入口为 `betweenly://app`，由 Electron 主进程提供打包静态文件及公共 API 代理。渲染进程启用 sandbox、contextIsolation，关闭 Node integration；仅可请求固定应用源，无任意文件、任意上游地址或任意命令的 IPC 接口。桌面模式使用 Production 环境、独立数据目录和动态分配的回环端口，禁用开发身份；Gateway 的 DesktopAuth 显式开启时，只允许回环来源加每次启动随机生成的 `X-Desktop-Token`，绑定固定的本地用户 ID。主进程过滤客户端身份头后注入令牌，Gateway 再把本地身份转换为原有可信用户身份并剥离桌面令牌。INTERNAL 服务身份校验保持原样，其他非开发、非桌面模式继续拒绝公共请求。
 
-桌面使用打包的自包含 .NET 服务、Python 和微信助手 EXE。监督进程先绑定 Windows Job，再启动自动继承该进程组的服务及后代进程；窗口退出、主进程断开或监督进程被终止时，一并清理该应用的服务，不通过全局进程名或固定端口终止其他程序。安装版数据、DPAPI 密钥和日志位于当前 Windows 用户的 `%APPDATA%/Betweenly/`，独立于网页开发版 `.runtime/mvp/data/`；不自动迁移，也不把项目 .env、聊天数据或开发环境加入分发包。
+桌面使用打包的 Python 和微信助手 EXE；.NET 服务及助手以 framework-dependent 模式发布，共用程序目录内的一份私有 .NET 8、ASP.NET Core 与 Windows Desktop 运行环境，通过 DOTNET_ROOT / DOTNET_ROOT_X64 指定，无须系统预装 .NET。监督进程先绑定 Windows Job，再启动自动继承该进程组的服务及后代进程；窗口退出、主进程断开或监督进程被终止时，一并清理该应用的服务，不通过全局进程名或固定端口终止其他程序。安装版数据、DPAPI 密钥和日志位于当前 Windows 用户的 `%APPDATA%/Betweenly/`，独立于网页开发版 `.runtime/mvp/data/`；不自动迁移，也不把项目 .env、聊天数据或开发环境加入分发包。

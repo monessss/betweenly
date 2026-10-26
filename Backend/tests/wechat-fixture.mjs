@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
+if (process.env.WECHAT_FIXTURE_LOG) appendFileSync(process.env.WECHAT_FIXTURE_LOG, process.argv[2] + '\n');
 const version = 'fixture-4.1';
 if (process.argv[2] === 'status') console.log(JSON.stringify({ available: true, version, method: 'WINDOWS_LOCAL_TEXT', message: '测试助手' }));
 else console.log(JSON.stringify({

@@ -4,8 +4,23 @@ using SocialAssistant.Gateway.Http;
 using SocialAssistant.Gateway.Proxy;
 using SocialAssistant.Gateway.Routing;
 using SocialAssistant.Gateway.Security;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
+var trustedProxyAddresses = builder.Configuration.GetSection("Gateway:TrustedProxies").Get<string[]>() ?? [];
+if (trustedProxyAddresses.Length > 0)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownNetworks.Clear(); options.KnownProxies.Clear();
+        foreach (var address in trustedProxyAddresses) options.KnownProxies.Add(IPAddress.Parse(address));
+        options.ForwardLimit = 1;
+    });
+}
 
 builder.Services
     .AddOptions<GatewayOptions>()
@@ -18,6 +33,11 @@ builder.Services
             Uri.TryCreate(pair.Value.BaseUrl, UriKind.Absolute, out var uri) &&
             (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)),
         "Every downstream service BaseUrl must be an absolute HTTP(S) URL.")
+    .ValidateOnStart();
+builder.Services.AddOptions<GatewayOptions>()
+    .Validate(options => !options.AccountAuth.Enabled || (!options.DevelopmentAuth.Enabled && !options.DesktopAuth.Enabled), "Account authentication cannot be combined with development or desktop identity.")
+    .Validate(options => !options.AccountAuth.Enabled || new[] { GatewayServiceNames.Auth, GatewayServiceNames.User }.All(name => options.Services.TryGetValue(name, out var service) && service.GatewayKey.Length >= 32), "Account services require configured URLs and gateway keys of at least 32 characters.")
+    .Validate(options => !options.AccountAuth.Enabled || options.ServiceCredentials.TryGetValue(CallerServiceNames.Auth, out var key) && key.Length >= 32, "AuthService requires a service credential of at least 32 characters.")
     .ValidateOnStart();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -44,6 +64,7 @@ builder.Services.AddCors(options => options.AddPolicy("Frontend", policy =>
 builder.Services.AddSingleton<RouteCatalog>();
 builder.Services.AddSingleton<ServiceCredentialValidator>();
 builder.Services.AddSingleton<UserIdentityResolver>();
+builder.Services.AddSingleton<AuthTokenClient>();
 builder.Services.AddSingleton<GatewayProxy>();
 builder.Services.AddSingleton<ReadinessProbe>();
 builder.Services.AddHttpClient(GatewayProxy.ClientName, client =>
@@ -60,8 +81,25 @@ builder.Services.AddHttpClient(ReadinessProbe.ClientName, client =>
         AllowAutoRedirect = false,
         UseCookies = false
     });
+builder.Services.AddHttpClient(AuthTokenClient.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        context.Request.Method == "POST" && (context.Request.Path.Value?.TrimEnd('/') is "/api/v1/auth/registration-codes" or "/api/v1/auth/email-verification-requests" or "/api/v1/auth/password-reset-codes")
+            ? RateLimitPartition.GetFixedWindowLimiter("email:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Clamp(builder.Configuration.GetValue<int?>("Gateway:EmailCodeRequestsPerMinute") ?? 5, 1, 1000), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+            : context.Request.Path.StartsWithSegments("/api/v1/auth") && context.Request.Method is "POST" or "PUT"
+            ? RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Clamp(builder.Configuration.GetValue<int?>("Gateway:AccountRequestsPerMinute") ?? 60, 1, 1000), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+            : RateLimitPartition.GetNoLimiter("unlimited"));
+    options.OnRejected = async (context, _) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        await ApiErrorWriter.WriteAsync(context.HttpContext, 429, "RATE_LIMITED", "请求过于频繁，请稍后重试");
+    };
+});
 
 var app = builder.Build();
+if (trustedProxyAddresses.Length > 0) app.UseForwardedHeaders();
 
 app.UseExceptionHandler(errorApp =>
 {
@@ -85,6 +123,7 @@ app.UseExceptionHandler(errorApp =>
 app.UseWhen(
     context => context.Request.Path.StartsWithSegments("/api"),
     publicApi => publicApi.UseCors("Frontend"));
+app.UseRateLimiter();
 app.UseMiddleware<GatewayMiddleware>();
 
 app.MapGet("/healthz", () => Results.Ok(new

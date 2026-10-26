@@ -8,6 +8,7 @@ const paths: Record<string, string> = {
   history: 'M3 11a9 9 0 1 1 2.6 7M3 4v7h7m2-4v5l3 2',
   style: 'M4 21h16M6 17 12 3l6 14M8 12h8',
   plus: 'M12 5v14M5 12h14', arrow: 'M4 12h16m-6-6 6 6-6 6',
+  image: 'M3 3h18v18H3Zm0 13 6-6 6 6m-3-3 4-4 5 5M8 7h.01',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   chevron: 'm9 5 7 7-7 7', down: 'm6 9 6 6 6-6',
   check: 'm5 12 4 4L19 6', close: 'm6 6 12 12M6 18 18 6',

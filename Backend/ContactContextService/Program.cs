@@ -16,7 +16,7 @@ app.MapPost("/api/v1/contacts/{contactId}/text-imports", async Task<IResult> (Ht
 {
     var input = await Api.Body(c); return Api.Ok(c, await Mutate(() => TextImports.Commit(c, contactId, input, store)), 201);
 });
-app.MapGet("/api/v1/wechat-import/status", async Task<IResult> (HttpContext c) => Api.Ok(c, await wechatImports.Status(c.RequestAborted)));
+app.MapGet("/api/v1/wechat-import/status", async Task<IResult> (HttpContext c) => Api.Ok(c, await wechatImports.Status(c)));
 app.MapPost("/api/v1/contacts/{contactId}/wechat-imports/preview", async Task<IResult> (HttpContext c, string contactId) => Api.Ok(c, await wechatImports.PreviewAsync(c, contactId, await Api.Body(c), store)));
 app.MapPost("/api/v1/contacts/{contactId}/wechat-imports", async Task<IResult> (HttpContext c, string contactId) =>
 {

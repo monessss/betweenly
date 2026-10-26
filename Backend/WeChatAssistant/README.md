@@ -1,5 +1,7 @@
 # Betweenly 本地微信助手
 
+自动读取只允许受信桌面版调用。网页端不可触发服务器电脑的助手，即使请求经过 localhost 代理、携带登录身份或伪造 X-Forwarded-For 也不允许。桌面 Runtime 为 Gateway 和 Context 服务分配每次启动的独立 WECHAT_IMPORT_TOKEN，Gateway 丢弃外部同名请求头并在桌面认证通过后注入；Context 在启动助手和提交预览前再次校验。普通网页部署不得配置这个本机能力凭证。
+
 Windows 本机读取助手，已在微信 **4.1.15.13** 实测按条数向上读取 50 条。读取的是当前打开对话中可复制的纯文本，不是完整历史数据库。
 
 ## 使用
@@ -47,4 +49,4 @@ dotnet run --project tests/WeChatAssistant.Checks/WeChatAssistant.Checks.csproj 
 node --test tests/mvp.integration.mjs
 ```
 
-前者检查深浅主题气泡定位、中文空格、英文空格、emoji、菜单过滤及重叠页；后者使用 `tests/wechat-fixture.mjs` 协议夹具验证所有权、预览、原子写入、幂等和删除清理，不读取真实微信。
+前者检查深浅主题气泡定位、中文空格、英文空格、emoji、菜单过滤及重叠页；MVP 集成测试验证网页不能触发助手。根目录的 `node Backend/tests/wechat-boundary.integration.mjs` 使用协议夹具，另行验证桌面身份、预览、原子导入、幂等、重复消息保留，以及伪造本机 IP/请求头时不会启动助手；该测试不读取真实微信。测试构建输出可通过 BETWEENLY_BACKEND_TEST_OUTPUT 和 BETWEENLY_GATEWAY_TEST_OUTPUT 指定。

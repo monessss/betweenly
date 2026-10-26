@@ -9,7 +9,8 @@ export type EventType = 'MET_IN_PERSON' | 'SHARED_EXPERIENCE' | 'INVITATION_MADE
 export interface Versioned { version: number; createdAt: string; updatedAt: string }
 export interface ContactInput { label: string; relationshipStage: Stage; connectionContext: string | null; currentSituation: string | null }
 export interface Contact extends ContactInput, Versioned { contactId: string }
-export interface MessageInput { sender: Sender; text: string; sentAt: string | null; sequenceNo: number | null; sourceType: Exclude<Source, 'MODEL_INFERENCE'>; isVerbatim: boolean }
+export interface MessageImage { dataUrl: string; width: number; height: number }
+export interface MessageInput { sender: Sender; text: string; sentAt: string | null; sequenceNo: number | null; sourceType: Exclude<Source, 'MODEL_INFERENCE'>; isVerbatim: boolean; image?: MessageImage | null }
 export interface Message extends MessageInput, Versioned { messageId: string; contactId: string }
 export interface EventInput { eventType: EventType; whatHappened: string; occurredAt: string | null; sourceType: Exclude<Source, 'MODEL_INFERENCE'>; userReflection: string | null; relatedAdviceId: string | null }
 export interface Event extends EventInput, Versioned { eventId: string; contactId: string }
@@ -29,7 +30,7 @@ export type Advice = AdviceBase & (
   { status: 'CANNOT_ADVISE'; recommendation: null; replyOptions: []; draftRevision: null; cannotAdviseReason: { code: string; message: string } }
 );
 export interface Envelope<T> { data: T; meta: { nextCursor?: string | null }; traceId: string }
-export interface RequestOptions { method?: string; body?: unknown; version?: number; idempotencyKey?: string; signal?: AbortSignal }
+export interface RequestOptions { method?: string; body?: unknown; version?: number; idempotencyKey?: string; signal?: AbortSignal; anonymous?: boolean }
 export interface Transport { request<T>(path: string, options?: RequestOptions): Promise<Envelope<T>> }
 export interface Settings { baseUrl: string; devUserId: string; token: string }
 export const stages: Record<Stage, string> = { JUST_CONNECTED: '刚刚认识', ACQUAINTED: '已经相识', ONGOING_CONTACT: '持续联系', PLANNING_MEETING: '计划见面', UNCLEAR: '还不确定' };

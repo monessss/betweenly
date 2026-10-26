@@ -1,5 +1,9 @@
 # 第三方来源
 
+## GalReview 登录与注册页面参考
+
+用户提供的本地参考：`C:/Users/LENOVO/Desktop/GalReview-main/frontend`，重点查看 `src/components/AuthLayout.tsx`、`src/pages/LoginPage.tsx`、`src/pages/RegisterPage.tsx` 和 `src/styles/auth.css`。Betweenly 的 `AuthPage.tsx`、`auth.css` 参考其左右分栏、品牌区域、标题与表单层级，使用本项目品牌、文案、主题变量、统一圆角及账号接口独立实现；未复制 GalReview 的业务逻辑、品牌资产或依赖。
+
 ## Koishi
 
 - 上游：<https://github.com/koishijs/koishi>

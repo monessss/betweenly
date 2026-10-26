@@ -13,6 +13,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdviceService", "AdviceServ
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeChatAssistant", "WeChatAssistant\WeChatAssistant.csproj", "{7C069EFE-03C4-4408-BA60-32FD284F0709}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AccountShared", "AccountShared\AccountShared.csproj", "{948A0BA5-596F-4239-968D-BCA135C034E9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthService", "AuthService\AuthService.csproj", "{2130CA40-BDFF-4550-8664-8D97A45A84DB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UserService", "UserService\UserService.csproj", "{7D5EEC9E-F651-47A5-B258-D42EB2AAE57E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +48,17 @@ Global
 		{7C069EFE-03C4-4408-BA60-32FD284F0709}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7C069EFE-03C4-4408-BA60-32FD284F0709}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7C069EFE-03C4-4408-BA60-32FD284F0709}.Release|Any CPU.Build.0 = Release|Any CPU
+		{948A0BA5-596F-4239-968D-BCA135C034E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{948A0BA5-596F-4239-968D-BCA135C034E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{948A0BA5-596F-4239-968D-BCA135C034E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{948A0BA5-596F-4239-968D-BCA135C034E9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2130CA40-BDFF-4550-8664-8D97A45A84DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2130CA40-BDFF-4550-8664-8D97A45A84DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2130CA40-BDFF-4550-8664-8D97A45A84DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2130CA40-BDFF-4550-8664-8D97A45A84DB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D5EEC9E-F651-47A5-B258-D42EB2AAE57E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D5EEC9E-F651-47A5-B258-D42EB2AAE57E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D5EEC9E-F651-47A5-B258-D42EB2AAE57E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D5EEC9E-F651-47A5-B258-D42EB2AAE57E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

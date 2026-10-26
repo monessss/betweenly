@@ -6,6 +6,9 @@
 
 | 服务 | 实现 |
 | --- | --- |
+| AuthService | MySQL 中保存账号凭据和令牌摘要；用户名/邮箱/密码及邮箱验证码注册；邮箱密码登录、会话、刷新和密码修改 |
+| UserService | MySQL 用户资料；经 AuthService 创建；本人资料查询及带版本修改 |
+| AccountShared | 两个账号服务共享的 MySQL 连接、字段校验、Gateway 信任边界及初始表结构 |
 | ExpressionStyleService | 读写、删除自己的表达习惯；替换和删除检查 `If-Match` |
 | ContactContextService | 联系人、消息、事件、偏好与边界 CRUD；上下文范围检查；自动纳入硬边界；数据清除与建议删除协调 |
 | AdviceService | 选取上下文与风格、模型编排、结构和证据校验、建议历史、反馈和实际后续；幂等及并发修改检查 |
@@ -49,6 +52,8 @@ dotnet build Backend.sln --no-restore
 前端本次分析使用保存后的记录，`ephemeralContext` 非 null 明确返回 422；没有静默将临时原文长期保存。原始问题/草稿不作为独立上下文档案保存，只保存其校验后的建议结果与载荷摘要。完整临时背景生命周期、正式 OpenAPI 和模型效果评测留待后续。
 
 ## 测试
+
+聊天消息支持可选 `image` 附件（JPEG data URL、width、height），兼容旧文本消息；仅图片时 `text` 可为空。图片最长边 1600px、解码后最大 256KB，每条一张、每次分析最多两张。图片内联保存于所属用户的消息记录，修改和删除沿用消息版本及建议失效机制。AnalysisService 先调用 DeepSeek 视觉接口，再以带不确定性、标为模型推测的文字描述进入双模型分析；原始图片不进入 Jev，不作为用户说话风格样本。图片失败会明确报错，不会悄悄忽略图片继续生成。
 
 本地微信读取、原子批量导入和短期预览实现见 [WeChatAssistant/README.md](WeChatAssistant/README.md)。助手由 Context 服务按用户请求启动，通过微信复制纯文本；OCR 仅确认菜单和会话名称。不增加网络服务端口，不访问模型。Context 服务可通过 `WECHAT_ASSISTANT_PATH` 设置助手程序集位置。
 

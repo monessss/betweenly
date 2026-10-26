@@ -19,7 +19,7 @@ export function WeChatImportDialog({ api, contact, onClose, onImported }: { api:
     return () => controller.abort();
   }, [api]);
   async function read() {
-    if (!validCount) return;
+    if (!validCount || !status?.available) return;
     const controller = new AbortController(); readController.current = controller;
     setBusy('reading'); setError('');
     try {
@@ -40,8 +40,8 @@ export function WeChatImportDialog({ api, contact, onClose, onImported }: { api:
   function update(id: string, value: Partial<WeChatImportMessage>) { setMessages(current => current.map(message => message.clientId === id ? { ...message, ...value } : message)); }
   return <Modal title="从微信导入" wide onClose={() => { if (busy !== 'importing') { readController.current?.abort(); onClose(); } }}>
     <div className="wechat-import">
-      <p className="import-instruction">在电脑微信中打开对话，仅读取纯文本。</p>
-      <div className="import-read-controls"><label className="import-count"><input type="number" aria-label="读取条数" min={1} max={100} step={1} value={count} disabled={!!busy} onChange={event => setCount(event.target.value)} /><span>条</span></label><button className="primary-button" disabled={!!busy || !validCount} onClick={() => { void read(); }}>{busy === 'reading' ? <span className="spinner" /> : <Icon name="download" size={16} />}{busy === 'reading' ? '读取中' : preview ? '重新读取' : '读取微信'}</button></div>
+      <p className="import-instruction">在运行 Betweenly 桌面版的本机微信中打开对话，仅读取纯文本。</p>
+      <div className="import-read-controls"><label className="import-count"><input type="number" aria-label="读取条数" min={1} max={100} step={1} value={count} disabled={!!busy} onChange={event => setCount(event.target.value)} /><span>条</span></label><button className="primary-button" disabled={!!busy || !validCount || !status?.available} onClick={() => { void read(); }}>{busy === 'reading' ? <span className="spinner" /> : <Icon name="download" size={16} />}{busy === 'reading' ? '读取中' : preview ? '重新读取' : '读取微信'}</button></div>
       {!preview && status && <p className="import-note">{status.available ? '微信 ' + (status.version ?? '') + ' · 本机读取' : status.message}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {preview && <div className="import-preview motion-content">

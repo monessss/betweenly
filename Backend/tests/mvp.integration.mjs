@@ -12,7 +12,8 @@ mkdirSync(join(root, '.runtime'), { recursive: true });
 const runtime = mkdtempSync(join(root, '.runtime/test-mvp-'));
 const base = 'http://127.0.0.1:6080/api/v1';
 const user = randomUUID(), otherUser = randomUUID();
-let calls = 0, reviewCalls = 0, latestInput, invalidations = 0;
+let calls = 0, reviewCalls = 0, latestInput, invalidations = 0, visionCalls = 0;
+const photo = { dataUrl: 'data:image/jpeg;base64,' + readFileSync(join(root, 'Backend/tests/fixtures/photo.jpg')).toString('base64'), width: 32, height: 24 };
 let launcher, ready, providerFailure = false;
 const savedKeys = {
   CREDENTIAL_A: { deepseek: 'saved-fixture-deepseek-a', jev: 'saved-fixture-jev-a' },
@@ -22,6 +23,18 @@ const savedKeys = {
 const provider = createServer(async (req, res) => {
   let body = ''; for await (const chunk of req) body += chunk;
   const request = JSON.parse(body);
+  if (Array.isArray(request.messages[1].content)) {
+    assert.equal(req.headers.authorization, 'Bearer test-only-key');
+    const blocks = request.messages[1].content; visionCalls++;
+    const images = [];
+    for (let i = 0; i < blocks.length; i += 2) {
+      const item = JSON.parse(blocks[i].text);
+      assert.equal(blocks[i + 1].type, 'image_url'); assert.equal(blocks[i + 1].image_url.url, photo.dataUrl);
+      images.push({ messageId: item.messageId, description: '图片可能是棕色背景', uncertainties: ['颜色识别可能有偏差'] });
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ images }) } }] })); return;
+  }
   assert.equal(request.response_format.type, 'json_object'); assert.match(request.messages[0].content, /JSON Schema/);
   const input = JSON.parse(request.messages[1].content); latestInput = input; calls++;
   const q = input.specificQuestion || '';
@@ -32,7 +45,7 @@ const provider = createServer(async (req, res) => {
   const message = input.context.messages.find(m => m.text !== '未被模型引用的输入') ?? input.context.messages[0]; const ref = message ? 'message:' + message.messageId : null;
   const blocked = input.context.preferenceRecords.some(p => p.hardConstraint && p.boundaryRule === 'DO_NOT_CONTACT_AGAIN');
   const output = { schemaVersion: '1.0', status: blocked && q !== 'BYPASS_BOUNDARY' ? 'CANNOT_ADVISE' : ref ? 'OK' : 'NEEDS_CONTEXT', contextUsedRefs: ref ? [ref] : [],
-    observations: ref ? [{ statement: message.text, kind: 'FACT', evidenceRefs: [ref] }] : [], uncertainties: [],
+    observations: ref ? [{ statement: message.text || message.imageAnalysis?.description, kind: message.imageAnalysis ? 'INFERENCE' : 'FACT', evidenceRefs: [ref] }] : [], uncertainties: message?.imageAnalysis ? ['图片识别可能有误差'] : [],
     recommendation: null, replyOptions: [], draftRevision: null, responseHandling: [], clarifyingQuestions: [], engineVersion: 'server-assigned', createdAt: new Date().toISOString() };
   if (output.status === 'OK') {
     output.recommendation = { actionType: 'ASK_FOLLOW_UP', title: '先听对方说', reason: '对方表达了难受，可以简短关心。', evidenceRefs: [ref], actionTags: ['CONTACT'], appliesWhen: null, alternatives: [] };
@@ -186,6 +199,40 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
     assert.equal((await api('/advice-requests/' + advice.requestId)).data.requestId, advice.requestId);
     const conflict = await api(path, 'POST', { ...input, specificQuestion: 'changed' }, { 'Idempotency-Key': key }, 409); assert.equal(conflict.error.code, 'IDEMPOTENCY_KEY_REUSED');
   });
+  await t.test('photo records persist, reach vision, respect scope, and invalidate advice on edit/delete', async () => {
+    const target = (await api('/contacts', 'POST', contactInput('图片测试'), {}, 201)).data;
+    const path = `/contacts/${target.contactId}/messages`;
+    const input = { ...messageInput(''), image: photo };
+    const record = (await api(path, 'POST', input, {}, 201)).data;
+    assert.deepEqual(record.image, photo); assert.equal(record.text, '');
+    await api(path, 'POST', { ...input, image: { ...photo, width: 99 } }, {}, 400);
+    await api(path, 'POST', { ...input, image: { ...photo, dataUrl: 'https://example.com/private.jpg' } }, {}, 400);
+    await api(path, 'POST', { ...input, imageAnalysis: { description: 'forged' } }, {}, 400);
+    await api('/messages/' + record.messageId, 'PATCH', { image: null }, version(1), 400);
+    await api('/messages/' + record.messageId, 'DELETE', undefined, version(1), 404, otherUser);
+    const before = visionCalls;
+    const advicePath = `/contacts/${target.contactId}/advice-requests`;
+    const result = (await api(advicePath, 'POST', adviceInput(record.messageId), { 'Idempotency-Key': randomUUID() }, 201)).data;
+    assert.equal(visionCalls, before + 1); assert.match(result.engineVersion, /vision-1.0/);
+    assert.equal(latestInput.context.messages[0].imageAnalysis.sourceType, 'MODEL_INFERENCE');
+    assert.ok(!JSON.stringify(latestInput).includes('data:image'));
+    const extra = [];
+    for (let i = 0; i < 2; i++) extra.push((await api(path, 'POST', input, {}, 201)).data.messageId);
+    const pair = { ...adviceInput(record.messageId), selectedMessageIds: [record.messageId, extra[0]] }, pairKey = randomUUID();
+    const combined = (await api(advicePath, 'POST', pair, { 'Idempotency-Key': pairKey }, 201)).data;
+    assert.equal(visionCalls, before + 2); assert.equal(latestInput.context.messages.filter(m => m.imageAnalysis).length, 2);
+    const replay = (await api(advicePath, 'POST', pair, { 'Idempotency-Key': pairKey }, 201)).data;
+    assert.equal(replay.requestId, combined.requestId); assert.equal(visionCalls, before + 2, 'replay does not bill vision twice');
+    const tooMany = await api(advicePath, 'POST', { ...adviceInput(record.messageId), selectedMessageIds: [record.messageId, ...extra] }, { 'Idempotency-Key': randomUUID() }, 413);
+    assert.equal(tooMany.error.code, 'INPUT_TOO_LARGE'); assert.equal(visionCalls, before + 2);
+    const changed = (await api('/messages/' + record.messageId, 'PATCH', { text: '补充文字', image: null }, version(1))).data;
+    assert.equal(changed.image, null);
+    await api('/advice-requests/' + result.requestId, 'GET', undefined, {}, 404);
+    const imageAdvice = (await api(advicePath, 'POST', adviceInput(extra[0]), { 'Idempotency-Key': randomUUID() }, 201)).data;
+    await api('/messages/' + extra[0], 'DELETE', undefined, version(1), 204);
+    await api('/advice-requests/' + imageAdvice.requestId, 'GET', undefined, {}, 404);
+    await api('/contacts/' + target.contactId, 'DELETE', undefined, version(1), 204);
+  });
   await t.test('feedback and actual outcome persist through owning service', async () => {
     await api(`/advice-requests/${advice.requestId}/feedback`, 'POST', { selectedOptionId: 'foreign-option', editedText: null, flags: [], comment: null }, {}, 422);
     await api(`/advice-requests/${advice.requestId}/feedback`, 'POST', { selectedOptionId: 'reply-1', editedText: '怎么了？', flags: ['NOT_ME'], comment: null }, {}, 201);
@@ -275,36 +322,17 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
     await api('/messages/' + second.messageId, 'DELETE', undefined, version(1), 204);
     await api('/advice-requests/' + created.requestId, 'GET', undefined, {}, 404);
   });
-  await t.test('WeChat preview, review and bulk import are scoped, atomic and idempotent without model calls', async () => {
+  await t.test('web visitors cannot trigger the server computer WeChat helper', async () => {
     const beforeCalls = calls;
-    assert.equal((await api('/wechat-import/status')).data.available, true);
+    assert.equal((await api('/wechat-import/status')).data.available, false);
     const target = (await api('/contacts','POST',contactInput('导入测试对象'),{},201)).data;
     const path = `/contacts/${target.contactId}/wechat-imports`;
-    for (const count of [0,-1,101,1.5,'50',null]) await api(path+'/preview','POST',{count},{},400);
-    await api(path+'/preview','POST',{pages:1},{},400);
-    const one = (await api(path+'/preview','POST',{count:1})).data;
-    assert.equal(one.messages.length,1,'requested count reaches the helper and limits the preview');
-    const preview = (await api(path+'/preview','POST',{count:50})).data;
-    assert.equal(preview.messages.length,4); assert.equal(preview.messages[0].possibleDuplicate,false);
+    await api(path+'/preview','POST',{count:50},{},403);
+    await api(path,'POST',{}, {'X-Forwarded-For':'127.0.0.1','X-WeChat-Import-Token':'spoofed'},403);
     assert.equal((await api(`/contacts/${target.contactId}/messages`)).data.length,0);
-    const input = {previewId:preview.previewId,conversationConfirmed:true,messages:preview.messages.slice(0,3).map(({clientId,sender,text})=>({clientId,sender,text}))};
-    await api(path,'POST',input,{},404,otherUser);
-    await api(path,'POST',{...input,conversationConfirmed:false},{},422);
-    await api(path,'POST',{...input,messages:[input.messages[0],{...input.messages[1],clientId:randomUUID()}]},{},422);
-    assert.equal((await api(`/contacts/${target.contactId}/messages`)).data.length,0);
-    const imported = (await api(path,'POST',input,{},201)).data; assert.equal(imported.importedCount,3);
-    const messages = (await api(`/contacts/${target.contactId}/messages`)).data;
-    assert.equal(messages.filter(m=>m.text==='收到').length,2,'identical adjacent messages must remain separate');
-    assert.ok(messages.every(m=>m.sourceType==='USER_RELAY' && m.isVerbatim===false && m.sentAt===null && m.sequenceNo===null));
-    assert.equal((await api(path,'POST',input,{},201)).data.importedCount,0);
-    await api(path,'POST',{...input,messages:[{...input.messages[0],text:'修改后的内容'}]},{},409);
-    const again = (await api(path+'/preview','POST',{count:50})).data;
-    assert.equal(again.messages[0].possibleDuplicate,true);
-    assert.equal((await api(path,'POST',{...input,previewId:again.previewId,messages:again.messages.slice(0,3).map(({clientId,sender,text})=>({clientId,sender,text}))},{},201)).data.importedCount,3,'explicit selection in a fresh preview may retain repeated real messages');
-    assert.equal((await api(`/contacts/${target.contactId}/messages`)).data.length,6);
     assert.equal(calls,beforeCalls,'import must never call the model');
     await api('/contacts/'+target.contactId,'DELETE',undefined,version(target.version),204);
-    await api(path,'POST',input,{},404);
+    await api(path,'POST',{}, {},403);
   });
   await t.test('affinity assessment is scoped, evidence-backed, nullable when insufficient and invalidated with its sources', async () => {
     const target=(await api('/contacts','POST',contactInput('评分合成测试'),{},201)).data;

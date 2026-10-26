@@ -9,7 +9,7 @@ public static class WritingStyleLearning
     private static readonly Regex Excluded = new(@"https?://|www\.|[\w.+-]+@[\w.-]+\.\w+|\d{5,}|(?:sk-|apikey_)[A-Za-z0-9_-]{12,}|验证码|密码|口令|password|api.?key|```|(?:system|developer|assistant)\s*:|(?:^|\n)\s*>|聊天记录|转发记录|忽略.*指令|ignore.*instructions", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     public static JsonObject Build(IEnumerable<JsonObject> messages, string contactId)
     {
-        var rows = messages.Where(m => m["contactId"]?.GetValue<string>() == contactId && m["sender"]?.GetValue<string>() == "USER")
+        var rows = messages.Where(m => m["contactId"]?.GetValue<string>() == contactId && m["sender"]?.GetValue<string>() == "USER" && m["image"] is null)
             .OrderByDescending(m => m["sentAt"]?.GetValue<string>() ?? m["createdAt"]?.GetValue<string>(), StringComparer.Ordinal)
             .ThenByDescending(m => m["messageId"]!.GetValue<string>(), StringComparer.Ordinal)
             .Where(m => Usable(m["text"]?.GetValue<string>() ?? "")).Take(80).ToArray();

@@ -12,7 +12,8 @@
     "desktop:dev": "node desktop/scripts/dev.mjs",
     "desktop:test": "node --test desktop/tests/*.test.mjs",
     "desktop:pack": "node desktop/scripts/package.mjs --dir",
-    "desktop:dist": "npm run desktop:prepare && node desktop/scripts/package.mjs"
+    "desktop:dist": "npm run desktop:prepare && node desktop/scripts/package.mjs --dir",
+    "desktop:installer": "npm run desktop:prepare && node desktop/scripts/package.mjs --installer"
   },
   "devDependencies": {
     "electron": "45.0.0",

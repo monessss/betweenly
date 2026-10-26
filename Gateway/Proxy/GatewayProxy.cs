@@ -32,6 +32,16 @@ public sealed class GatewayProxy(
             "Host",
             "Content-Length",
             "Authorization",
+            "Cookie",
+            "X-Session-Id",
+            "X-Caller-Service",
+            "X-Client-IP",
+            "X-WeChat-Import-Token",
+            "X-Forwarded-For",
+            "X-Forwarded-Proto",
+            "X-Forwarded-Host",
+            "Forwarded",
+            UserIdentityResolver.DesktopTokenHeader,
             ApiErrorWriter.CorrelationHeader,
             UserIdentityResolver.DevelopmentUserHeader,
             ServiceCredentialValidator.ServiceNameHeader,
@@ -78,11 +88,18 @@ public sealed class GatewayProxy(
         if (ShouldForwardBody(context.Request))
         {
             message.Content = new StreamContent(context.Request.Body);
+            if (context.Request.ContentLength is { } contentLength)
+            {
+                message.Content.Headers.ContentLength = contentLength;
+            }
         }
 
         CopyContentHeaders(context, message);
         message.Headers.TryAddWithoutValidation(ApiErrorWriter.CorrelationHeader, traceId);
-        message.Headers.TryAddWithoutValidation("X-User-Id", userId.ToString());
+        if (userId != Guid.Empty) message.Headers.TryAddWithoutValidation("X-User-Id", userId.ToString());
+        if (context.Items["sessionId"] is string sessionId) message.Headers.TryAddWithoutValidation("X-Session-Id", sessionId);
+        if (context.Items["callerService"] is string caller) message.Headers.TryAddWithoutValidation("X-Caller-Service", caller);
+        if (context.Items["wechatImportToken"] is string wechatToken) message.Headers.TryAddWithoutValidation("X-WeChat-Import-Token", wechatToken);
         message.Headers.TryAddWithoutValidation("X-Gateway-Key", target.GatewayKey);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);

@@ -49,6 +49,7 @@ public static class ApiErrorWriter
         context.Response.Clear();
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers[CorrelationHeader] = traceId;
         foreach (var header in protocolHeaders)
         {

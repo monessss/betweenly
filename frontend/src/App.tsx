@@ -10,8 +10,11 @@ import { WeChatImportDialog } from './WeChatImportDialog.tsx';
 import { BatchImportDialog } from './BatchImportDialog.tsx';
 import { AffinityAssessment } from './AffinityAssessment.tsx';
 import { ModelKeyFields } from './ModelKeyFields.tsx';
+import { PhotoInput } from './PhotoInput.tsx';
+import { AccountEmailVerification } from './EmailVerification.tsx';
+import type { AccountProfile } from './lib/auth.ts';
 import { boundaries, categories, eventTypes, goals, sources, stages } from './lib/contracts.ts';
-import type { Advice, AdviceInput, Boundary, Category, Contact, Entry, Event, EventType, Goal, Message, Preference, Settings, Source, Stage, Style, StyleInput, Transport, WritingStyle } from './lib/contracts.ts';
+import type { Advice, AdviceInput, Boundary, Category, Contact, Entry, Event, EventType, Goal, Message, MessageImage, Preference, Settings, Source, Stage, Style, StyleInput, Transport, WritingStyle } from './lib/contracts.ts';
 
 type Page = 'workspace' | 'history';
 type RecordItem = Message | Event | Preference;
@@ -24,7 +27,7 @@ function splitLines(value: string) { return value.split('\n').map(line => line.t
 function shortDate(date: string) { return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(date)); }
 function localDate(value: string | null) { if (!value) return ''; const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
 function getId(item: RecordItem) { return 'messageId' in item ? item.messageId : 'eventId' in item ? item.eventId : item.recordId; }
-function recordText(item: RecordItem) { return 'text' in item ? item.text : 'whatHappened' in item ? item.whatHappened : item.statement; }
+function recordText(item: RecordItem) { return 'text' in item ? item.text || (item.image ? '[图片]' : '') : 'whatHappened' in item ? item.whatHappened : item.statement; }
 function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) { return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>; }
 function Actions({ busy, label = '保存', onClose }: { busy: boolean; label?: string; onClose: () => void }) { return <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? '正在处理…' : label}<Icon name="arrow" size={16} /></button></div>; }
 
@@ -41,10 +44,10 @@ function ToneOptions({ initial, disabled }: { initial: StyleInput['preferredTone
   })}</fieldset>;
 }
 
-export default function App() {
+export default function App({ account }: { account?: { api: Transport; profile: AccountProfile; onLogout: () => Promise<void>; onVerified: () => void } }) {
   const [settings, setSettings] = useState(readSettings);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => { try { return localStorage.getItem('betweenly.theme') === 'dark' ? 'dark' : 'light'; } catch { return 'light'; } });
-  const api = useMemo<Transport>(() => new GatewayApi(settings), [settings]);
+  const api = useMemo<Transport>(() => account?.api ?? new GatewayApi(settings), [settings, account?.api]);
   const [gatewayState, setGatewayState] = useState<GatewayState>('connecting');
   const [page, setPage] = useState<Page>('workspace'); const [mobileNav, setMobileNav] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]); const [contactId, setContactId] = useState('');
@@ -60,6 +63,7 @@ export default function App() {
   const [styleForm, setStyleForm] = useState<StyleInput>(blankStyle);
   const [writingStyle, setWritingStyle] = useState<WritingStyle | null>(null);
   const [settingsView, setSettingsView] = useState<'connection' | 'style'>('connection');
+  const [photoPreview, setPhotoPreview] = useState<MessageImage | null>(null);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('betweenly.theme', theme); } catch { /* Theme storage is optional. */ } }, [theme]);
 
@@ -156,6 +160,7 @@ export default function App() {
   }
   function analyze() {
     if (!contact) return;
+    if (selectedMessages.filter(m => m.image).length > 2) { setError(new ApiError('每次分析最多选择 2 张图片，请减少后重试', 'INPUT_TOO_LARGE')); return; }
     if (selectedMessages.length > 200 || selectedEvents.length > 50 || selectedPreferences.length > 50) { setError(new ApiError('选中的背景超过契约上限，请减少后重试', 'VALIDATION_ERROR')); return; }
     const input: AdviceInput = { entryPoint: entry, userGoal: goal, specificQuestion: question.trim() || null, selectedMessageIds: selectedMessages.map(item => item.messageId), selectedEventIds: selectedEvents.map(item => item.eventId), selectedPreferenceIds: selectedPreferences.map(item => item.recordId), draftText: goal === 'ASSESS_AFFINITY' ? null : draft.trim() || null, ephemeralContext: null };
     const signature = JSON.stringify([contactId, input]); if (signature !== requestReplay.current.signature) requestReplay.current = { signature, key: crypto.randomUUID() };
@@ -169,6 +174,12 @@ export default function App() {
     event.preventDefault(); if (!dialog) return;
     const data = new FormData(event.currentTarget); const text = (key: string) => String(data.get(key) ?? '').trim(); const nullable = (key: string) => text(key) || null;
     if (dialog.kind === 'settings') {
+      if (account) {
+        const modelKeys: Record<string, string> = Object.fromEntries(['deepseekApiKey', 'jevApiKey'].map(name => [name, text(name)]).filter(([, value]) => value));
+        if (Object.values(modelKeys).some(value => !/^[!-~]{8,512}$/.test(value))) { setFormError('API Key 应为 8–512 个非空格英文字符'); return; }
+        await work(async () => { if (Object.keys(modelKeys).length) await api.request('/me/model-credentials', { method: 'PATCH', body: modelKeys }); setDialog(null); setToast('设置已保存'); }, true);
+        return;
+      }
       const next: Settings = isDesktop ? { ...defaultSettings } : { baseUrl: text('baseUrl').replace(/\/$/, ''), devUserId: text('devUserId'), token: text('token') };
       if (!validBaseUrl(next.baseUrl)) { setFormError('请填写以 /api/v1 结尾的 HTTP(S) 地址'); return; }
       if (!next.token && !isUuid(next.devUserId)) { setFormError('请填写有效的小写开发用户 UUID v4，或用户令牌'); return; }
@@ -191,11 +202,13 @@ export default function App() {
         setContacts(current => dialog.value ? current.map(item => item.contactId === response.data.contactId ? response.data : item) : [...current, response.data]); setContactId(response.data.contactId); setPage('workspace');
       }
       if (dialog.kind === 'record') {
-        if (!text('text')) throw new ApiError('记录内容不能为空', 'VALIDATION_ERROR');
+        if (text('imageProcessing')) throw new ApiError('图片正在处理，请稍候保存', 'VALIDATION_ERROR');
+        const image = dialog.type === 'messages' && text('image') ? JSON.parse(text('image')) as MessageImage : null;
+        if (!text('text') && !image) throw new ApiError('请填写文字或上传图片', 'VALIDATION_ERROR');
         const sourceType = text('sourceType') as Source; const refDate = text('date'); let body: unknown;
         if (dialog.type === 'messages' && sourceType === 'USER_RELAY' && data.has('isVerbatim')) throw new ApiError('凭记忆转述时，请取消“与聊天界面原文一致”', 'VALIDATION_ERROR');
         if (data.getAll('sourceRefs').length > 20) throw new ApiError('关联依据最多选择 20 条', 'VALIDATION_ERROR');
-        if (dialog.type === 'messages') body = { sender: text('sender'), text: text('text'), sentAt: refDate ? new Date(refDate).toISOString() : null, sequenceNo: text('sequenceNo') ? Number(text('sequenceNo')) : null, sourceType, isVerbatim: data.has('isVerbatim') };
+        if (dialog.type === 'messages') body = { sender: text('sender'), text: text('text'), sentAt: refDate ? new Date(refDate).toISOString() : null, sequenceNo: text('sequenceNo') ? Number(text('sequenceNo')) : null, sourceType, isVerbatim: data.has('isVerbatim'), image };
         if (dialog.type === 'events') body = { eventType: text('eventType'), whatHappened: text('text'), occurredAt: refDate ? new Date(refDate).toISOString() : null, sourceType, userReflection: nullable('userReflection'), relatedAdviceId: dialog.value && 'relatedAdviceId' in dialog.value ? dialog.value.relatedAdviceId : null };
         if (dialog.type === 'preference-records') body = { subject: text('subject'), category: text('category'), statement: text('text'), boundaryRule: text('category') === 'BOUNDARY' ? text('boundaryRule') as Boundary : null, appliesWhen: nullable('appliesWhen'), sourceType, sourceRefs: data.getAll('sourceRefs').map(String), supersedesRecordId: dialog.value && 'supersedesRecordId' in dialog.value ? dialog.value.supersedesRecordId : null };
         await api.request(dialog.value ? '/' + dialog.type + '/' + getId(dialog.value) : '/contacts/' + contactId + '/' + dialog.type, { method: dialog.value ? 'PATCH' : 'POST', body, version: dialog.value?.version });
@@ -259,6 +272,7 @@ export default function App() {
           <button className={'icon-button history-toggle ' + (page === 'history' ? 'is-active' : '')} aria-label={page === 'history' ? '返回工作区' : '查看历史建议'} title={page === 'history' ? '返回工作区' : '历史建议'} aria-pressed={page === 'history'} disabled={busy} onClick={() => setPage(page === 'history' ? 'workspace' : 'history')}><Icon name="history" size={21} /></button>
           <ActionMenu label="联系人操作"><button className="danger" disabled={busy} onClick={() => deleteContact(contact)}>删除联系人</button></ActionMenu>
         </>}
+        {account && <button type="button" className="workspace-logout" disabled={busy} onClick={() => { void work(account.onLogout, true); }}>Log out</button>}
       </header>
 
       {error && <div className="error-message" role="alert"><Icon name="info" size={17} /><div><strong>{error.message}</strong><small>{error.code}{error.traceId && ' · ' + error.traceId}</small></div><button className="icon-button" aria-label="重试加载" disabled={busy} onClick={() => setRevision(current => current + 1)}><Icon name="refresh" size={17} /></button><button className="icon-button" aria-label="关闭错误提示" onClick={() => setError(null)}><Icon name="close" size={17} /></button></div>}
@@ -281,9 +295,9 @@ export default function App() {
             </div>}
             <select className="record-filter" aria-label="记录类型" value={contextTab} onChange={event => setContextTab(event.target.value as RecordKind)}><option value="messages">聊天 · {messages.length}</option><option value="events">事件 · {events.length}</option><option value="preference-records">偏好与边界 · {preferences.length}</option></select>
             {contextTab === 'messages' ? <ActionMenu label="添加记录" className="record-import-menu" icon="plus">
-              <button disabled={busy || contextLoading} onClick={() => openDialog({ kind: 'record', type: 'messages' })}>手动导入</button>
+              <button disabled={busy || contextLoading} onClick={() => openDialog({ kind: 'record', type: 'messages' })}>添加文字 / 图片</button>
               <button disabled={busy || contextLoading} onClick={() => openDialog({ kind: 'batch' })}>批量导入</button>
-              <button disabled={busy || contextLoading} onClick={() => openDialog({ kind: 'wechat' })}>从微信导入</button>
+              {isDesktop && <button disabled={busy || contextLoading} onClick={() => openDialog({ kind: 'wechat' })}>从微信导入</button>}
             </ActionMenu> : <button className="icon-button" aria-label="添加记录" title="添加记录" disabled={busy || contextLoading} onClick={() => openDialog({ kind: 'record', type: contextTab })}><Icon name="plus" size={19} /></button>}
           </div>
           <div key={contextTab} className={'record-scroll motion-panel' + (contextTab === 'messages' ? ' chat-timeline' : '')} id="context-records">
@@ -300,7 +314,7 @@ export default function App() {
                     <label className="chat-avatar" htmlFor={'chat-select-' + item.messageId}><Icon name="user" size={21} /></label>
                     <div className="chat-content">
                       <div className="chat-sender"><div className="chat-sender-controls"><label className="chat-sender-name" htmlFor={'chat-select-' + item.messageId} title={sender}>{sender}</label><ActionMenu label="记录操作" className="chat-message-menu"><button disabled={busy} onClick={() => openDialog({ kind: 'record', type: 'messages', value: item })}>编辑</button><button className="danger" disabled={busy} onClick={() => deleteMessage(item)}>删除</button></ActionMenu></div></div>
-                      <label className="chat-bubble" htmlFor={'chat-select-' + item.messageId}>{item.text}</label>
+                      <div className="chat-bubble">{item.image && <button type="button" className="chat-photo" aria-label="查看图片" onClick={() => setPhotoPreview(item.image!)}><img src={item.image.dataUrl} alt="聊天图片" loading="lazy" /></button>}{item.text && <label htmlFor={'chat-select-' + item.messageId}>{item.text}</label>}</div>
                     </div>
                   </div>
                 </div>
@@ -348,25 +362,28 @@ export default function App() {
         <Field label="避免的表达" hint="每行一项，最多 20 项，每项 100 字。"><textarea name="avoid" rows={3} maxLength={2019} defaultValue={styleForm.avoidPatterns.join('\n')} /></Field><Field label="我的例句" hint="每行一句，最多 10 句，每句 500 字。"><textarea name="examples" rows={3} maxLength={5009} defaultValue={styleForm.examplePhrases.join('\n')} /></Field>{formError && <p className="form-error" role="alert">{formError}</p>}<Actions busy={busy} label="保存" onClose={closeDialog} />
       </form> : <form className="motion-panel" key={dialog.kind === 'settings' ? 'connection' : dialog.kind} id={dialog.kind === 'settings' ? 'settings-panel-connection' : undefined} role={dialog.kind === 'settings' ? 'tabpanel' : undefined} aria-labelledby={dialog.kind === 'settings' ? 'settings-tab-connection' : undefined} onSubmit={submitDialog}>
         {dialog.kind === 'contact' && <><Field label="称呼"><input name="label" maxLength={64} required autoFocus defaultValue={dialog.value?.label} /></Field><Field label="阶段"><select name="stage" defaultValue={dialog.value?.relationshipStage ?? 'JUST_CONNECTED'}>{Object.entries(stages).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select></Field><Field label="认识背景"><textarea name="connectionContext" rows={3} maxLength={2000} defaultValue={dialog.value?.connectionContext ?? ''} /></Field><Field label="近况"><textarea name="currentSituation" rows={3} maxLength={2000} defaultValue={dialog.value?.currentSituation ?? ''} /></Field></>}
-        {dialog.kind === 'record' && <RecordForm dialog={dialog} messages={messages} events={events} />}
-        {dialog.kind === 'settings' && <>{!isDesktop && <><Field label="API 地址"><input name="baseUrl" type="url" required defaultValue={settings.baseUrl} /></Field><Field label="开发用户 ID"><input name="devUserId" defaultValue={settings.devUserId} autoComplete="off" spellCheck={false} /></Field><Field label="访问令牌（可选）"><input name="token" type="password" defaultValue={settings.token} autoComplete="off" /></Field></>}<ModelKeyFields api={api} disabled={busy} /></>}
+        {dialog.kind === 'record' && <RecordForm key={dialog.value ? getId(dialog.value) : dialog.type} dialog={dialog} messages={messages} events={events} busy={busy} />}
+        {dialog.kind === 'settings' && <>{account && <div className="account-profile"><div><strong>{account.profile.username}</strong><span>{account.profile.email}</span></div></div>}{account && <AccountEmailVerification api={api} email={account.profile.email} verified={account.profile.emailVerified} disabled={busy} onVerified={account.onVerified} />}{!isDesktop && !account && <><Field label="API 地址"><input name="baseUrl" type="url" required defaultValue={settings.baseUrl} /></Field><Field label="开发用户 ID"><input name="devUserId" defaultValue={settings.devUserId} autoComplete="off" spellCheck={false} /></Field><Field label="访问令牌（可选）"><input name="token" type="password" defaultValue={settings.token} autoComplete="off" /></Field></>}<ModelKeyFields api={api} disabled={busy} /></>}
         {dialog.kind === 'feedback' && <><Field label="最终表达"><textarea maxLength={1000} rows={3} value={editedReply} onChange={event => setEditedReply(event.target.value)} /></Field><fieldset className="feedback-flags"><legend>反馈</legend>{Object.entries({ TOO_ROBOTIC: '机械', TOO_SMOOTH: '圆滑', NOT_ME: '不像我', TOO_LONG: '太长', MISREAD_CONTEXT: '背景理解有误', TOO_PUSHY: '太主动', BOUNDARY_RISK: '边界风险', OTHER: '其他' }).map(([key, value]) => <label key={key}><input type="checkbox" name="flags" value={key} />{value}</label>)}</fieldset><Field label="备注"><textarea name="comment" maxLength={1000} rows={2} /></Field></>}
         {dialog.kind === 'outcome' && <><Field label="事件类型"><select name="eventType" defaultValue="USER_ACTION">{Object.entries(eventTypes).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select></Field><Field label="实际结果"><textarea required name="text" maxLength={2000} rows={4} /></Field><Field label="发生时间（未知留空）"><input name="date" type="datetime-local" /></Field><Field label="我的感受（可选）"><textarea name="userReflection" maxLength={1000} rows={2} /></Field></>}
         {dialog.kind === 'delete' && <><div className="delete-warning"><Icon name="trash" size={25} /><p>{dialog.detail}</p></div>{dialog.requireTextConfirmation !== false && <Field label="输入“删除”确认"><input name="confirmation" required pattern="删除" autoComplete="off" autoFocus /></Field>}</>}
         {formError && <p className="form-error" role="alert">{formError}</p>}<Actions busy={busy} onClose={closeDialog} label={dialog.kind === 'delete' ? '确认删除' : dialog.kind === 'outcome' ? '保存结果' : '保存'} />
       </form>}
     </Modal> : null)}</ModalPresence>
+    <ModalPresence open={photoPreview !== null}>{photoPreview && <Modal title="图片" onClose={() => setPhotoPreview(null)} wide><img className="photo-preview" src={photoPreview.dataUrl} alt="聊天图片预览" /></Modal>}</ModalPresence>
   </div>;
 }
 
 function toError(cause: unknown): ApiError { return cause instanceof ApiError ? cause : new ApiError(cause instanceof Error ? cause.message : '操作未能完成，请稍后重试'); }
-function RecordForm({ dialog, messages, events }: { dialog: Extract<Dialog, { kind: 'record' }>; messages: Message[]; events: Event[] }) {
+function RecordForm({ dialog, messages, events, busy }: { dialog: Extract<Dialog, { kind: 'record' }>; messages: Message[]; events: Event[]; busy: boolean }) {
   const value = dialog.value; const [category, setCategory] = useState<Category>(value && 'category' in value ? value.category : 'INTEREST');
+  const [image, setImage] = useState<MessageImage | null>(value && 'image' in value ? value.image ?? null : null);
   return <>
     {dialog.type === 'messages' && <Field label="这句话是谁说的？"><select name="sender" defaultValue={value && 'sender' in value ? value.sender : 'OTHER'}><option value="OTHER">对方</option><option value="USER">我</option><option value="UNKNOWN">不确定</option></select></Field>}
     {dialog.type === 'events' && <Field label="事件类型"><select name="eventType" defaultValue={value && 'eventType' in value ? value.eventType : 'OTHER'}>{Object.entries(eventTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>}
     {dialog.type === 'preference-records' && <><div className="form-grid"><Field label="这是谁的偏好？"><select name="subject" defaultValue={value && 'subject' in value ? value.subject : 'COUNTERPART'}><option value="COUNTERPART">对方</option><option value="USER">我</option></select></Field><Field label="记录类别"><select name="category" value={category} onChange={event => setCategory(event.target.value as Category)}>{Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field></div>{category === 'BOUNDARY' && <Field label="明确的边界规则"><select name="boundaryRule" required defaultValue={value && 'boundaryRule' in value ? value.boundaryRule ?? 'OTHER' : 'OTHER'}>{Object.entries(boundaries).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>}</>}
-    <Field label={dialog.type === 'messages' ? '聊天原文' : dialog.type === 'events' ? '实际发生了什么？' : '具体内容'}><textarea name="text" rows={4} required maxLength={dialog.type === 'messages' ? 4000 : 2000} defaultValue={value ? recordText(value) : ''} placeholder="输入记录内容" /></Field>
+    {dialog.type === 'messages' && <PhotoInput initial={image} disabled={busy} onChange={setImage} />}
+    <Field label={dialog.type === 'messages' ? image ? '文字（可选）' : '聊天原文' : dialog.type === 'events' ? '实际发生了什么？' : '具体内容'}><textarea name="text" rows={4} required={!image} maxLength={dialog.type === 'messages' ? 4000 : 2000} defaultValue={value && 'text' in value ? value.text : value ? recordText(value) : ''} placeholder="输入记录内容" /></Field>
     <Field label="内容来源"><select name="sourceType" defaultValue={value?.sourceType ?? (dialog.type === 'messages' ? 'COUNTERPART_EXPLICIT' : 'USER_RELAY')}>{Object.entries(sources).filter(([key]) => dialog.type === 'preference-records' || key !== 'MODEL_INFERENCE').map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
     {dialog.type !== 'preference-records' && <Field label="原始发生时间（未知请留空）" ><input name="date" type="datetime-local" defaultValue={value && 'sentAt' in value ? localDate(value.sentAt) : value && 'occurredAt' in value ? localDate(value.occurredAt) : ''} /></Field>}
     {dialog.type === 'messages' && <><Field label="原始消息顺序（未知请留空）"><input name="sequenceNo" type="number" min={1} step={1} defaultValue={value && 'sequenceNo' in value ? value.sequenceNo ?? '' : ''} /></Field><label className="check-label"><input type="checkbox" name="isVerbatim" defaultChecked={value && 'isVerbatim' in value ? value.isVerbatim : true} />与聊天界面原文一致（凭记忆复述时请取消，并选择“我的转述”）</label></>}

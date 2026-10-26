@@ -21,10 +21,14 @@ export class GatewayApi implements Transport {
   async request<T>(path: string, options: RequestOptions = {}): Promise<Envelope<T>> {
     if (!path.startsWith('/') || path.startsWith('//') || path.includes('..')) throw new ApiError('接口路径无效', 'VALIDATION_ERROR');
     if (!validBaseUrl(this.settings.baseUrl)) throw new ApiError('请在连接设置中填写以 /api/v1 结尾的 Gateway 地址', 'VALIDATION_ERROR');
-    if (!this.settings.token && !isUuid(this.settings.devUserId)) throw new ApiError('本地联调需要有效的开发用户 UUID，或提供用户令牌', 'AUTH_REQUIRED');
+    const anonymous = options.anonymous === true;
+    if (anonymous && (options.method !== 'POST' || !['/auth/registrations', '/auth/registration-codes', '/auth/password-reset-codes', '/auth/password-resets', '/auth/sessions', '/auth/tokens'].includes(path))) throw new ApiError('该接口不允许匿名请求', 'AUTH_REQUIRED');
+    if (!anonymous && !this.settings.token && !isUuid(this.settings.devUserId)) throw new ApiError('本地联调需要有效的开发用户 UUID，或提供用户令牌', 'AUTH_REQUIRED');
     const headers: Record<string, string> = { 'X-Correlation-Id': crypto.randomUUID() };
-    if (this.settings.token) headers.Authorization = 'Bearer ' + this.settings.token;
-    else headers['X-Dev-User-Id'] = this.settings.devUserId;
+    if (!anonymous) {
+      if (this.settings.token) headers.Authorization = 'Bearer ' + this.settings.token;
+      else headers['X-Dev-User-Id'] = this.settings.devUserId;
+    }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     if (options.version !== undefined) headers['If-Match'] = String(options.version);
     if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;

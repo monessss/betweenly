@@ -90,6 +90,8 @@ app.MapPost("/api/v1/contacts/{contactId}/advice-requests", async Task<IResult> 
         var style = await Style(c);
         var includeWritingStyle = (style?["learnFromMessages"]?.GetValue<bool>() ?? true) && input["userGoal"]!.GetValue<string>() != "ASSESS_AFFINITY";
         var context = await Context(c, contactId, requestId, input, includeWritingStyle);
+        if (context["messages"]!.AsArray().Count(m => m?["image"] is not null) > 2)
+            throw new ApiException(413, "INPUT_TOO_LARGE", "每次分析最多选择 2 张图片，请减少后重试");
         var analysisInput = new JsonObject
         {
             ["requestId"] = requestId, ["schemaVersion"] = "1.0", ["entryPoint"] = input["entryPoint"]!.DeepClone(), ["userGoal"] = input["userGoal"]!.DeepClone(),

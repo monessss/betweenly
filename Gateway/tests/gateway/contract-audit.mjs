@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const gatewayRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const output = resolve(gatewayRoot, "bin/Debug/net8.0");
+const output = process.env.BETWEENLY_GATEWAY_TEST_OUTPUT || resolve(gatewayRoot, "bin/Debug/net8.0");
 const user = "7bc4918a-9079-4ea2-9e8e-369ad79a9f20";
 const processes = [];
 const servers = [];
@@ -153,16 +153,69 @@ try {
   });
   const gateway = await startGateway("Development", mock);
 
+  await check("frontend port 3000 can preflight public API requests", async () => {
+    for (const origin of ["http://localhost:3000", "http://127.0.0.1:3000"]) {
+      const response = await request(gateway, "/api/v1/contacts", {
+        method: "OPTIONS", headers: {
+          Origin: origin,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type,x-dev-user-id,idempotency-key"
+        }
+      });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get("access-control-allow-origin"), origin);
+      assert.ok(response.headers.get("access-control-allow-methods").includes("POST"));
+      assert.ok(response.headers.get("access-control-allow-headers").toLowerCase().includes("idempotency-key"));
+    }
+  });
+  await check("unconfigured origins do not receive public API CORS access", async () => {
+    const response = await request(gateway, "/api/v1/contacts", {
+      method: "OPTIONS", headers: {
+        Origin: "http://localhost:3999",
+        "Access-Control-Request-Method": "GET"
+      }
+    });
+    assert.equal(response.headers.get("access-control-allow-origin"), null);
+  });
+  await check("frontend can read API errors and correlation headers", async () => {
+    const origin = "http://localhost:3000";
+    const response = await request(gateway, "/api/v1/contacts", {
+      headers: { Origin: origin, "X-Dev-User-Id": "" }
+    });
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    assert.ok(response.headers.get("access-control-expose-headers").toLowerCase().includes("x-correlation-id"));
+    assert.equal((await response.json()).error.code, "AUTH_REQUIRED");
+  });
+  await check("INTERNAL routes do not offer browser CORS preflight access", async () => {
+    const response = await request(gateway, "/internal/v1/analysis", {
+      method: "OPTIONS", headers: {
+        Origin: "http://localhost:3000",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "x-service-name,x-service-key"
+      }
+    });
+    assert.equal(response.headers.get("access-control-allow-origin"), null);
+    assert.notEqual(response.status, 204);
+  });
+
   await check("all public routes in contract section 5 reach the correct service", async () => {
     const contract = await readFile(resolve(gatewayRoot, "../contract.md"), "utf8");
     const section = contract.split("## 5. API 目录")[1].split("### 5.1")[0];
     const entries = [...section.matchAll(/\| `(GET|PUT|POST|PATCH|DELETE)` \| `([^`]+)` \|[^|]+\| ([^|]+)\|/g)];
     assert.ok(entries.length > 20, "Public route table was not found");
-    const services = { ExpressionStyleService: "expression-style-service", ContactContextService: "contact-context-service", AdviceService: "advice-service" };
+    const services = { ExpressionStyleService: "expression-style-service", ContactContextService: "contact-context-service", AdviceService: "advice-service", AnalysisService: "analysis-service" };
     for (const [, method, route, owner] of entries) {
       const target = Object.entries(services).find(([name]) => owner.trim().startsWith(name))[1];
       const path = "/api/v1" + route.replace(/\{[^}]+\}/g, user);
       const response = await request(gateway, path, { method });
+      if (route.includes('wechat-import')) {
+        const value = await response.json();
+        assert.equal(response.status, method === 'GET' ? 200 : 403);
+        if (method === 'GET') assert.equal(value.data.available, false);
+        else assert.equal(value.error.code, 'WECHAT_LOCAL_ONLY');
+        continue;
+      }
       assert.equal(response.status, 200, method + " " + path);
       assert.equal((await response.json()).headers["x-gateway-key"], "audit-" + target, path);
     }
@@ -171,11 +224,15 @@ try {
   await check("browser identity cannot call INTERNAL analysis", async () => {
     assert.equal((await request(gateway, "/internal/v1/analysis", { method: "POST" })).status, 403);
   });
+  await check("writing-style preview is read-only and validates the contact UUID", async () => {
+    assert.equal((await request(gateway, `/api/v1/contacts/${user}/writing-style`, { method: "POST" })).status,405);
+    assert.equal((await request(gateway, "/api/v1/contacts/not-a-uuid/writing-style")).status,400);
+  });
   await check("all INTERNAL routes enforce the documented caller and target service", async () => {
     const contract = await readFile(resolve(gatewayRoot, "../contract.md"), "utf8");
     const section = contract.split("### 3.6 INTERNAL 路由与身份")[1].split("内部调用约束：")[0];
     const entries = [...section.matchAll(/\| `(GET|POST|DELETE)` \| `([^`]+)` \| (\w+) \| (\w+) \|/g)];
-    assert.equal(entries.length, 5);
+    assert.equal(entries.length, 6);
     const services = { ExpressionStyleService: "expression-style-service", ContactContextService: "contact-context-service", AdviceService: "advice-service", AnalysisService: "analysis-service" };
     for (const [, method, route, caller, target] of entries) {
       const path = route.replace(/\{[^}]+\}/g, user);
@@ -302,6 +359,15 @@ try {
     assert.equal((await response.json()).headers.cookie, undefined);
   });
   const production = await startGateway("Production", mock);
+  await check("production CORS requires an explicitly configured frontend origin", async () => {
+    const response = await request(production, "/api/v1/contacts", {
+      method: "OPTIONS", headers: {
+        Origin: "http://localhost:3000",
+        "Access-Control-Request-Method": "GET"
+      }
+    });
+    assert.equal(response.headers.get("access-control-allow-origin"), null);
+  });
   await check("production rejects the development identity header even when enabled by configuration", async () => {
     assert.equal((await request(production, "/api/v1/contacts")).status, 401);
   });

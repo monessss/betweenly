@@ -1,0 +1,99 @@
+/* Registration shares the account palette and reference 11px field radius. */
+.account-page.account-page--register {
+  --radius: 11px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100dvh;
+}
+.account-page--register .account-story {
+  min-height: 100%;
+  padding: 48px clamp(28px, 6vw, 96px) 32px;
+}
+.account-page--register .account-brand {
+  width: 224px;
+  height: auto;
+  aspect-ratio: 4 / 1;
+}
+.account-page--register .account-story-copy { padding: 48px 0 72px; }
+.account-page--register .account-story-copy h1 {
+  font-size: clamp(34px, 4.2vw, 66px);
+  line-height: 1.25;
+  white-space: normal;
+}
+.account-page--register .account-content {
+  min-height: 100dvh;
+  padding: 68px clamp(28px, 4.5vw, 88px) 36px;
+}
+.account-page--register .account-form { width: min(100%, 420px); }
+.account-page--register .account-heading { margin-bottom: 26px; }
+.account-page--register .account-heading > p { margin-bottom: 12px; }
+.account-page--register .account-heading h2 {
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1.25;
+  letter-spacing: -.04em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.account-page--register .account-field { min-height: 94px; }
+.account-page--register .account-field > label { margin-bottom: 8px; }
+.account-page--register .account-control,
+.account-page--register .verification-code-row input { height: 52px; border-radius: var(--radius); }
+.account-page--register .account-control input { padding-inline: 15px; }
+.account-page--register .account-reveal { width: 46px; height: 46px; }
+.account-page--register .account-reveal svg { width: 23px; height: 23px; }
+.account-page--register .account-field-error {
+  min-height: 25px;
+  padding: 4px 0;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+.account-page--register .account-field-help {
+  margin: -15px 0 16px;
+  color: var(--account-muted);
+  font-size: 11px;
+  line-height: 17px;
+}
+.account-page--register .account-fields:has(.account-field:last-child.has-error) + .account-field-help { margin-top: 0; }
+.account-page--register .verification-code-row { flex-direction: column; align-items: stretch; gap: 4px; }
+.account-page--register .verification-code-row input { flex: 0 0 auto; width: 100%; }
+.account-page--register .verification-send {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius);
+  border-color: transparent;
+  background: transparent;
+}
+.account-page--register .verification-send,
+.account-page--register .account-switch a { color: var(--account-accent); font-size: 13px; font-weight: 600; }
+.account-page--register .verification-send:disabled { opacity: 1; }
+.account-page--register .verification-send:hover:not(:disabled) { background: transparent; text-decoration: underline; text-underline-offset: 4px; }
+.account-page--register .verification-send:focus-visible { outline: 2px solid var(--account-accent); outline-offset: 3px; }
+.account-page--register .verification-code-row input[aria-invalid=true] { border-color: var(--k-color-danger); }
+.account-page--register .verification-note { color: var(--account-muted); }
+.account-page--register .account-submit { min-height: 52px; margin-top: 4px; }
+.account-page--register .account-submit b { font-size: 24px; font-weight: 400; line-height: 1; }
+.account-page--register .account-switch { margin-top: 20px; }
+.account-page--register .account-switch a { padding-block: 6px; }
+@media (min-width: 801px) and (max-height: 760px) {
+  .account-page--register .account-content { padding-block: 56px 28px; }
+}
+@media (max-width: 800px) {
+  .account-page.account-page--register { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .account-page--register .account-story {
+    min-height: auto;
+    padding: 24px 26px;
+    border-right: 0;
+    border-bottom: 1px solid var(--account-border);
+  }
+  .account-page--register .account-brand { width: 182px; }
+  .account-page--register .account-story-copy { display: none; }
+  .account-page--register .account-copyright { margin-top: 12px; }
+  .account-page--register .account-content { min-height: auto; padding: 30px 26px max(32px, env(safe-area-inset-bottom)); }
+  .account-page--register .account-heading h2 { font-size: 30px; }
+  .account-page--register .account-theme { top: 24px; right: 26px; }
+}
+@media (max-width: 360px) {
+  .account-page--register .account-content, .account-page--register .account-story { padding-inline: 20px; }
+}

@@ -14,7 +14,8 @@ public sealed class GatewayRoute
         string service,
         IEnumerable<string> methods,
         bool isInternal = false,
-        IEnumerable<string>? allowedCallers = null)
+        IEnumerable<string>? allowedCallers = null,
+        bool allowAnonymous = false)
     {
         Name = name;
         PathPattern = new Regex(
@@ -25,6 +26,7 @@ public sealed class GatewayRoute
             methods.Select(method => method.ToUpperInvariant()),
             StringComparer.Ordinal);
         IsInternal = isInternal;
+        AllowAnonymous = allowAnonymous;
         AllowedCallers = allowedCallers is null
             ? EmptyCallers
             : new HashSet<string>(allowedCallers, StringComparer.Ordinal);
@@ -39,6 +41,7 @@ public sealed class GatewayRoute
     public IReadOnlySet<string> Methods { get; }
 
     public bool IsInternal { get; }
+    public bool AllowAnonymous { get; }
 
     public IReadOnlySet<string> AllowedCallers { get; }
 

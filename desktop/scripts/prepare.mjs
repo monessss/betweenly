@@ -42,7 +42,7 @@ async function main() {
   await run(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', 'Expand-Archive -LiteralPath $env:BETWEENLY_PYTHON_ZIP -DestinationPath $env:BETWEENLY_PYTHON_DEST -Force']);
   await writeFile(join(bundle, 'python/python313._pth'), 'python313.zip\n.\n../analysis\n');
   await mkdir(join(bundle, 'analysis'), { recursive: true });
-  for (const file of ['server.py', 'jev.py', 'validation.py', 'style_learning.py', 'credentials.py', 'system-prompt.txt']) await cp(join(root, 'Backend/AnalysisService', file), join(bundle, 'analysis', file));
+  for (const file of ['server.py', 'jev.py', 'vision.py', 'validation.py', 'style_learning.py', 'credentials.py', 'system-prompt.txt']) await cp(join(root, 'Backend/AnalysisService', file), join(bundle, 'analysis', file));
   await mkdir(join(bundle, 'contracts'), { recursive: true });
   await cp(join(root, 'Backend/contracts/analysis-output.schema.json'), join(bundle, 'contracts/analysis-output.schema.json'));
   await cp(join(root, 'desktop/runtime-host.py'), join(bundle, 'runtime-host.py'));

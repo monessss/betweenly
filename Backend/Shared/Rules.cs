@@ -12,7 +12,7 @@ public static class Rules
     public static string Fields(string kind) => kind switch
     {
         "contacts" => "label relationshipStage connectionContext currentSituation",
-        "messages" => "sender text sentAt sequenceNo sourceType isVerbatim",
+        "messages" => "sender text sentAt sequenceNo sourceType isVerbatim image",
         "events" => "eventType whatHappened occurredAt sourceType userReflection relatedAdviceId",
         "preference-records" => "subject category statement boundaryRule appliesWhen sourceType sourceRefs supersedesRecordId",
         "style" => "preferredLength emojiPreference preferredTones avoidPatterns examplePhrases learnFromMessages",
@@ -56,12 +56,14 @@ public static class Rules
     public static JsonObject Input(string kind, JsonObject input)
     {
         if (kind == "style" && !input.ContainsKey("learnFromMessages")) input["learnFromMessages"] = true;
+        if (kind == "messages" && !input.ContainsKey("image")) input["image"] = null;
         Keys(input, Fields(kind));
         switch (kind)
         {
             case "contacts": Text(input, "label", 64); Enum(input, "relationshipStage", "JUST_CONNECTED ACQUAINTED ONGOING_CONTACT PLANNING_MEETING UNCLEAR"); Text(input, "connectionContext", 2000, true, 0); Text(input, "currentSituation", 2000, true, 0); break;
             case "messages":
-                Enum(input, "sender", "USER OTHER UNKNOWN"); Text(input, "text", 4000); Date(input, "sentAt"); Source(input); Bool(input, "isVerbatim");
+                ImageAttachment.Validate(input["image"]);
+                Enum(input, "sender", "USER OTHER UNKNOWN"); Text(input, "text", 4000, false, input["image"] is null ? 1 : 0); Date(input, "sentAt"); Source(input); Bool(input, "isVerbatim");
                 if (input["sequenceNo"] is not null && (input["sequenceNo"] is not JsonValue seq || !seq.TryGetValue<int>(out var i) || i < 1)) throw Api.Invalid("sequenceNo 必须为正整数或 null");
                 if (!input["isVerbatim"]!.GetValue<bool>() && input["sourceType"]!.GetValue<string>() == "COUNTERPART_EXPLICIT") throw Api.Business("非逐字消息应使用转述来源");
                 break;

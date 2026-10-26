@@ -41,12 +41,14 @@ export class DesktopRuntime extends EventEmitter {
     const environment = { ...cleanEnvironment(), DOTNET_ENVIRONMENT: 'Production', ASPNETCORE_ENVIRONMENT: 'Production', DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_ROOT: dotnetRoot, DOTNET_ROOT_X64: dotnetRoot, DOTNET_MULTILEVEL_LOOKUP: '0' };
     const python = join(this.bundle, 'python', 'python.exe');
     const services = [];
+    const wechatImportToken = randomBytes(32).toString('hex');
     for (const [index, project] of ['ExpressionStyleService', 'ContactContextService', 'AdviceService'].entries()) {
       const cwd = join(this.bundle, 'services', project);
       services.push({ name: names[index], executable: join(cwd, project + '.exe'), arguments: [], cwd, environment: {
         ...environment, ASPNETCORE_URLS: `http://127.0.0.1:${servicePorts[index]}`, GATEWAY_KEY: serviceKeys[index],
         SERVICE_CREDENTIAL: index === 1 ? contextKey : index === 2 ? adviceKey : '', INTERNAL_GATEWAY_URL: this.gatewayUrl,
-        DATA_DIRECTORY: join(this.profile, 'data', names[index]), WECHAT_ASSISTANT_PATH: join(this.bundle, 'services', 'WeChatAssistant', 'Betweenly.WeChatAssistant.exe')
+        DATA_DIRECTORY: join(this.profile, 'data', names[index]), WECHAT_ASSISTANT_PATH: join(this.bundle, 'services', 'WeChatAssistant', 'Betweenly.WeChatAssistant.exe'),
+        ...(index === 1 ? { WECHAT_IMPORT_TOKEN: wechatImportToken } : {})
       } });
     }
     services.push({ name: names[3], executable: python, arguments: ['-u', join(this.bundle, 'analysis', 'server.py')], cwd: join(this.bundle, 'analysis'), environment: {
@@ -55,7 +57,7 @@ export class DesktopRuntime extends EventEmitter {
     } });
     const gatewayEnvironment = {
       ...environment, Gateway__RequestTimeoutSeconds: '75', Gateway__DevelopmentAuth__Enabled: 'false',
-      Gateway__DesktopAuth__Enabled: 'true', Gateway__DesktopAuth__Token: this.token, Gateway__DesktopAuth__UserId: LOCAL_USER,
+      Gateway__DesktopAuth__Enabled: 'true', Gateway__DesktopAuth__Token: this.token, Gateway__DesktopAuth__UserId: LOCAL_USER, Gateway__DesktopAuth__WeChatImportToken: wechatImportToken,
       Gateway__ServiceCredentials__AdviceService: adviceKey, Gateway__ServiceCredentials__ContactContextService: contextKey
     };
     for (let index = 0; index < names.length; index++) {

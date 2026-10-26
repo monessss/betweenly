@@ -18,7 +18,7 @@ public sealed class ReadinessProbe(
         timeout.CancelAfter(TimeSpan.FromSeconds(
             Math.Max(1, gatewayOptions.ReadinessTimeoutSeconds)));
 
-        var checks = routes.All.Select(route => route.Service).Distinct(StringComparer.Ordinal)
+        var checks = routes.All.Where(route => gatewayOptions.AccountAuth.Enabled || route.Service is not (GatewayServiceNames.Auth or GatewayServiceNames.User)).Select(route => route.Service).Distinct(StringComparer.Ordinal)
             .Select(name => gatewayOptions.Services.TryGetValue(name, out var service)
                 ? CheckServiceAsync(name, service, timeout.Token)
                 : Task.FromResult(new DependencyReadiness(name, false)));

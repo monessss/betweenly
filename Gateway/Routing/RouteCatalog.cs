@@ -37,6 +37,31 @@ public sealed class RouteCatalog
 
     private static IReadOnlyList<GatewayRoute> BuildRoutes() =>
     [
+        new("auth-registration", @"^/api/v1/auth/registrations/?$", GatewayServiceNames.Auth, ["POST"], allowAnonymous: true),
+        new("auth-registration-code", @"^/api/v1/auth/registration-codes/?$", GatewayServiceNames.Auth, ["POST"], allowAnonymous: true),
+        new("auth-password-reset-code", @"^/api/v1/auth/password-reset-codes/?$", GatewayServiceNames.Auth, ["POST"], allowAnonymous: true),
+        new("auth-password-reset", @"^/api/v1/auth/password-resets/?$", GatewayServiceNames.Auth, ["POST"], allowAnonymous: true),
+        new("auth-email-verification-request", @"^/api/v1/auth/email-verification-requests/?$", GatewayServiceNames.Auth, ["POST"]),
+        new("auth-email-verification", @"^/api/v1/auth/email-verifications/?$", GatewayServiceNames.Auth, ["POST"]),
+        new("auth-login", @"^/api/v1/auth/sessions/?$", GatewayServiceNames.Auth, ["POST"], allowAnonymous: true),
+        new("auth-refresh", @"^/api/v1/auth/tokens/?$", GatewayServiceNames.Auth, ["POST"], allowAnonymous: true),
+        new("auth-sessions", @"^/api/v1/auth/sessions/?$", GatewayServiceNames.Auth, ["GET"]),
+        new("auth-session-revoke", $@"^/api/v1/auth/sessions/(?<sessionId>{Uuid})/?$", GatewayServiceNames.Auth, ["DELETE"]),
+        new("auth-account", @"^/api/v1/auth/account/?$", GatewayServiceNames.Auth, ["GET"]),
+        new("auth-logout", @"^/api/v1/auth/logout/?$", GatewayServiceNames.Auth, ["POST"]),
+        new("auth-password", @"^/api/v1/auth/password/?$", GatewayServiceNames.Auth, ["PUT"]),
+        new("admin-users", @"^/api/v1/admin/users/?$", GatewayServiceNames.Auth, ["GET"]),
+        new("admin-user", $@"^/api/v1/admin/users/(?<userId>{Uuid})/?$", GatewayServiceNames.Auth, ["GET", "DELETE"]),
+        new("admin-user-password", $@"^/api/v1/admin/users/(?<userId>{Uuid})/password/?$", GatewayServiceNames.Auth, ["PUT"]),
+        new("admin-user-ban", $@"^/api/v1/admin/users/(?<userId>{Uuid})/ban/?$", GatewayServiceNames.Auth, ["PUT", "DELETE"]),
+        new("user-me", @"^/api/v1/users/me/?$", GatewayServiceNames.User, ["GET", "PATCH"]),
+        new("internal-user-provision", @"^/internal/v1/users/?$", GatewayServiceNames.User, ["POST"], isInternal: true, allowedCallers: [CallerServiceNames.Auth]),
+        new("model-credentials", @"^/api/v1/me/model-credentials/?$", GatewayServiceNames.Analysis, ["GET", "PATCH"]),
+        new("contact-writing-style", $@"^/api/v1/contacts/(?<contactId>{Uuid})/writing-style/?$", GatewayServiceNames.ContactContext, Read),
+        new("text-import-commit", $@"^/api/v1/contacts/(?<contactId>{Uuid})/text-imports/?$", GatewayServiceNames.ContactContext, ["POST"]),
+        new("wechat-import-status", @"^/api/v1/wechat-import/status/?$", GatewayServiceNames.ContactContext, Read),
+        new("wechat-import-preview", $@"^/api/v1/contacts/(?<contactId>{Uuid})/wechat-imports/preview/?$", GatewayServiceNames.ContactContext, ["POST"]),
+        new("wechat-import-commit", $@"^/api/v1/contacts/(?<contactId>{Uuid})/wechat-imports/?$", GatewayServiceNames.ContactContext, ["POST"]),
         new(
             "expression-style-read",
             @"^/api/v1/me/expression-style/?$",
@@ -132,6 +157,13 @@ public sealed class RouteCatalog
             isInternal: true,
             allowedCallers: [CallerServiceNames.Advice]),
         new(
+            "internal-outcome-create",
+            $@"^/internal/v1/contacts/(?<contactId>{Uuid})/outcomes/?$",
+            GatewayServiceNames.ContactContext,
+            ["POST"],
+            isInternal: true,
+            allowedCallers: [CallerServiceNames.Advice]),
+        new(
             "internal-analysis",
             @"^/internal/v1/analysis/?$",
             GatewayServiceNames.Analysis,
@@ -157,6 +189,8 @@ public sealed class RouteCatalog
 
 public static class GatewayServiceNames
 {
+    public const string Auth = "auth-service";
+    public const string User = "user-service";
     public const string ExpressionStyle = "expression-style-service";
     public const string ContactContext = "contact-context-service";
     public const string Advice = "advice-service";
@@ -165,6 +199,7 @@ public static class GatewayServiceNames
 
 public static class CallerServiceNames
 {
+    public const string Auth = "AuthService";
     public const string Advice = "AdviceService";
     public const string ContactContext = "ContactContextService";
 }

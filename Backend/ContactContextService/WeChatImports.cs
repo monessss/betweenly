@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Security.Cryptography;
 using Betweenly.Shared;
 
 internal sealed class WeChatImports : IDisposable
@@ -12,9 +13,21 @@ internal sealed class WeChatImports : IDisposable
     private readonly SemaphoreSlim captureGate = new(1, 1);
     public WeChatImports() => cleanup = new Timer(_ => Expire(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     private void Expire() { foreach (var item in previews) if (item.Value.Expires <= DateTimeOffset.UtcNow) previews.TryRemove(item.Key, out _); }
-    public async Task<JsonObject> Status(CancellationToken cancellationToken) => await Run("status", null, cancellationToken);
+    private static bool LocalAccess(HttpContext context)
+    {
+        var expected = Api.Env("WECHAT_IMPORT_TOKEN");
+        var supplied = context.Request.Headers["X-WeChat-Import-Token"];
+        return expected.Length >= 32 && supplied.Count == 1 && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(supplied[0] ?? ""));
+    }
+    private static void RequireLocal(HttpContext context)
+    {
+        if (!LocalAccess(context)) throw new ApiException(403, "WECHAT_LOCAL_ONLY", "自动读取微信仅供本机 Betweenly 桌面版使用，网页端请使用批量粘贴导入。");
+    }
+    public async Task<JsonObject> Status(HttpContext context)
+        => LocalAccess(context) ? await Run("status", null, context.RequestAborted) : new JsonObject { ["available"] = false, ["version"] = null, ["method"] = "WINDOWS_LOCAL_TEXT", ["message"] = "网页端不支持自动读取微信，请使用批量粘贴导入。" };
     public async Task<JsonObject> PreviewAsync(HttpContext c, string contactId, JsonObject input, JsonStore store)
     {
+        RequireLocal(c);
         Rules.Keys(input, "count");
         if (input["count"] is not JsonValue valueCount || !valueCount.TryGetValue<int>(out var count) || count is < 1 or > 100) throw Api.Invalid("读取条数应为 1 至 100");
         var user = Api.User(c);
@@ -44,6 +57,7 @@ internal sealed class WeChatImports : IDisposable
     }
     public async Task<JsonObject> Commit(HttpContext c, string contactId, JsonObject input, JsonStore store)
     {
+        RequireLocal(c);
         Rules.Keys(input, "previewId conversationConfirmed messages");
         var previewId = Api.Uuid(Rules.Text(input, "previewId", 36)); Rules.Bool(input, "conversationConfirmed");
         if (!input["conversationConfirmed"]!.GetValue<bool>()) throw Api.Business("请确认微信会话对应当前联系人");
@@ -106,6 +120,9 @@ internal sealed class WeChatImports : IDisposable
         // The helper has no provider credential and performs no model/network requests.
         start.Environment.Remove("DEEPSEEK_API_KEY");
         start.Environment.Remove("TYPESAFE_API_KEY");
+        start.Environment.Remove("WECHAT_IMPORT_TOKEN");
+        start.Environment.Remove("GATEWAY_KEY");
+        start.Environment.Remove("SERVICE_CREDENTIAL");
         using var process = Process.Start(start) ?? throw new ApiException(503, "WECHAT_ASSISTANT_UNAVAILABLE", "本地微信助手无法启动");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(requestAborted); timeout.CancelAfter(TimeSpan.FromSeconds(command == "status" ? 8 : 65));
         var output = process.StandardOutput.ReadToEndAsync(timeout.Token); var errors = process.StandardError.ReadToEndAsync(timeout.Token);
