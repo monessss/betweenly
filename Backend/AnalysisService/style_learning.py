@@ -23,6 +23,32 @@ def validate_profile(profile, contact_id):
         raise ValueError("writing style sources")
 
 
+def validate_personal_voice(profile):
+    keys = {"revision", "privacyVersion", "sampleCount", "medianLength", "examples"}
+    if not isinstance(profile, dict) or set(profile) != keys:
+        raise ValueError("personal voice structure")
+    for key, maximum in (("revision", 2**53), ("privacyVersion", 2**53), ("sampleCount", 10000), ("medianLength", 500)):
+        if type(profile[key]) is not int or not 0 <= profile[key] <= maximum:
+            raise ValueError("personal voice statistic")
+    examples = profile["examples"]
+    if not isinstance(examples, list) or len(examples) > min(8, profile["sampleCount"]):
+        raise ValueError("personal voice size")
+    ids = set()
+    for sample in examples:
+        if not isinstance(sample, dict) or set(sample) != {"sampleId", "text", "situation"}:
+            raise ValueError("personal voice sample")
+        if not isinstance(sample["sampleId"], str) or not UUID.fullmatch(sample["sampleId"]) or sample["sampleId"] in ids:
+            raise ValueError("personal voice id")
+        ids.add(sample["sampleId"])
+        if not isinstance(sample["text"], str) or not sample["text"].strip() or len(sample["text"].encode("utf-16-le")) // 2 > 500:
+            raise ValueError("personal voice text")
+        if sample["situation"] not in {"GENERAL", "DAILY", "CARE", "HUMOR", "INVITATION", "APOLOGY", "BOUNDARY"}:
+            raise ValueError("personal voice situation")
+    lengths = sorted(len(s["text"].encode("utf-16-le")) // 2 for s in examples)
+    if profile["medianLength"] != (lengths[len(lengths)//2] if lengths else 0):
+        raise ValueError("personal voice median")
+
+
 def style_issues(value, result):
     replies = [item["text"] for item in result.get("replyOptions",[])]
     if result.get("draftRevision"):
@@ -31,7 +57,8 @@ def style_issues(value, result):
         return []
     manual = value.get("expressionStyle") or {}
     learned = value["context"].get("writingStyle") or {}
-    examples = manual.get("examplePhrases",[]) + learned.get("examples",[])
+    personal = value["context"].get("personalVoice") or {}
+    examples = manual.get("examplePhrases",[]) + learned.get("examples",[]) + [s["text"] for s in personal.get("examples", [])]
     issues=[]
     if any(re.match(r"^\s*(?:你可以这样回复|可以回复|建议回复|回复[:：])",reply) for reply in replies):
         issues.append("REPLY_CONTAINS_ASSISTANT_PREFACE")
@@ -41,10 +68,10 @@ def style_issues(value, result):
         issues.append("EXPLICIT_AVOID_PATTERN")
     if manual.get("preferredLength") == "SHORT":
         maximum = 48
-    elif manual.get("preferredLength") not in {"MEDIUM"} and learned.get("sampleCount",0) >= 5 and learned.get("medianLength",0) <= 20:
-        maximum = max(40, learned["medianLength"]*3)
     else:
-        maximum = None
+        # Current-contact voice takes priority over the generic personal library.
+        median = learned.get("medianLength") if learned.get("sampleCount", 0) >= 5 else personal.get("medianLength") if len(personal.get("examples", [])) >= 5 else None
+        maximum = max(40, median*3) if manual.get("preferredLength") != "MEDIUM" and median is not None and median <= 20 else None
     if maximum and any(len(reply) > maximum for reply in replies):
         issues.append("TOO_LONG_FOR_USER_VOICE")
     return issues

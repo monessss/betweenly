@@ -19,6 +19,14 @@ async Task<JsonNode?> Style(HttpContext c)
     try { return await gateway.Send(c, HttpMethod.Get, "/internal/v1/users/" + Api.User(c) + "/expression-style"); }
     catch (ApiException e) when (e.Status == 404) { return null; }
 }
+async Task AddPersonalVoice(HttpContext c, JsonObject context, JsonObject input, JsonNode? style)
+{
+    if (style?["usePersonalCorpus"]?.GetValue<bool>() == false || input["userGoal"]!.GetValue<string>() == "ASSESS_AFFINITY") return;
+    var text = string.Join("\n", context["messages"]!.AsArray().TakeLast(6).Select(m => m?["text"]?.GetValue<string>() ?? ""));
+    var query = string.Join("\n", input["specificQuestion"]?.GetValue<string>(), input["draftText"]?.GetValue<string>(), text);
+    if (query.Length > 4000) query = query[^4000..];
+    context["personalVoice"] = await gateway.Send(c, HttpMethod.Post, "/internal/v1/voice-queries", new JsonObject { ["userGoal"] = input["userGoal"]!.DeepClone(), ["query"] = query });
+}
 void RemoveAdvice(JsonObject s, string id, string user)
 {
     JsonStore.Rows(s).Remove("advice/" + id);
@@ -30,8 +38,14 @@ async Task<JsonObject> LoadAdvice(HttpContext c, string requestId)
     var snapshot = await store.Read(s =>
     {
         var value = JsonStore.Get(s, "advice", requestId, user);
-        return (value, refs: (JsonArray)(JsonStore.Row(s, "advice", requestId)["dependencies"] ?? value["contextUsedRefs"])!.DeepClone(), styleRefs: JsonStore.Row(s, "advice", requestId)["styleDependencies"]?.DeepClone() as JsonArray ?? new JsonArray(), epoch: JsonStore.Epoch(s, user));
+        return (value, refs: (JsonArray)(JsonStore.Row(s, "advice", requestId)["dependencies"] ?? value["contextUsedRefs"])!.DeepClone(), styleRefs: JsonStore.Row(s, "advice", requestId)["styleDependencies"]?.DeepClone() as JsonArray ?? new JsonArray(), epoch: JsonStore.Epoch(s, user), voiceVersion: JsonStore.Row(s, "advice", requestId)["voicePrivacyVersion"]?.GetValue<long>());
     });
+    var voiceVersion = snapshot.voiceVersion;
+    if (voiceVersion is not null)
+    {
+        var status = await gateway.Send(c, HttpMethod.Get, "/internal/v1/users/" + user + "/voice-corpus");
+        if (status?["privacyVersion"]?.GetValue<long>() != voiceVersion) throw Api.Missing();
+    }
     var query = new JsonObject { ["selectedMessageIds"] = new JsonArray(), ["selectedEventIds"] = new JsonArray(), ["selectedPreferenceIds"] = new JsonArray() };
     foreach (var reference in snapshot.refs.Select(r => r!.GetValue<string>()))
     {
@@ -90,6 +104,7 @@ app.MapPost("/api/v1/contacts/{contactId}/advice-requests", async Task<IResult> 
         var style = await Style(c);
         var includeWritingStyle = (style?["learnFromMessages"]?.GetValue<bool>() ?? true) && input["userGoal"]!.GetValue<string>() != "ASSESS_AFFINITY";
         var context = await Context(c, contactId, requestId, input, includeWritingStyle);
+        await AddPersonalVoice(c, context, input, style);
         if (context["messages"]!.AsArray().Count(m => m?["image"] is not null) > 2)
             throw new ApiException(413, "INPUT_TOO_LARGE", "每次分析最多选择 2 张图片，请减少后重试");
         var analysisInput = new JsonObject
@@ -101,12 +116,15 @@ app.MapPost("/api/v1/contacts/{contactId}/advice-requests", async Task<IResult> 
         AdviceValidation.Validate(output, analysisInput);
         // Reject a result if its source records/style changed or were deleted during generation.
         var latest = await Context(c, contactId, requestId, input, includeWritingStyle); var latestStyle = await Style(c);
+        await AddPersonalVoice(c, latest, input, latestStyle);
         if (Api.Hash(latest) != Api.Hash(context) || !JsonNode.DeepEquals(style, latestStyle)) throw new ApiException(409, "VERSION_CONFLICT", "分析期间背景或表达习惯发生变化，请重新分析");
         var result = (JsonObject)output.DeepClone(); result["requestId"] = requestId; result["contactId"] = contactId;
         await store.Write(s =>
         {
             if (JsonStore.Epoch(s, user) != epoch) throw new ApiException(409, "VERSION_CONFLICT", "分析期间背景已发生变化，请重新分析");
             JsonStore.Put(s, "advice", requestId, user, result);
+            if (context["personalVoice"]?["examples"] is JsonArray voiceExamples && voiceExamples.Count > 0)
+                JsonStore.Row(s, "advice", requestId)["voicePrivacyVersion"] = context["personalVoice"]!["privacyVersion"]!.DeepClone();
             var dependencies = new JsonArray();
             foreach (var (field, id, prefix) in new[] { ("messages", "messageId", "message"), ("events", "eventId", "event"), ("preferenceRecords", "recordId", "preference") })
                 foreach (var record in context[field]!.AsArray()) dependencies.Add(prefix + ":" + record![id]!.GetValue<string>());

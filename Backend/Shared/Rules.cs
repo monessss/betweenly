@@ -15,7 +15,7 @@ public static class Rules
         "messages" => "sender text sentAt sequenceNo sourceType isVerbatim image",
         "events" => "eventType whatHappened occurredAt sourceType userReflection relatedAdviceId",
         "preference-records" => "subject category statement boundaryRule appliesWhen sourceType sourceRefs supersedesRecordId",
-        "style" => "preferredLength emojiPreference preferredTones avoidPatterns examplePhrases learnFromMessages",
+        "style" => "preferredLength emojiPreference preferredTones avoidPatterns examplePhrases learnFromMessages usePersonalCorpus",
         "advice" => "entryPoint userGoal specificQuestion selectedMessageIds selectedEventIds selectedPreferenceIds draftText ephemeralContext",
         "feedback" => "selectedOptionId editedText flags comment",
         _ => throw new ArgumentException("Unknown contract")
@@ -56,6 +56,7 @@ public static class Rules
     public static JsonObject Input(string kind, JsonObject input)
     {
         if (kind == "style" && !input.ContainsKey("learnFromMessages")) input["learnFromMessages"] = true;
+        if (kind == "style" && !input.ContainsKey("usePersonalCorpus")) input["usePersonalCorpus"] = true;
         if (kind == "messages" && !input.ContainsKey("image")) input["image"] = null;
         Keys(input, Fields(kind));
         switch (kind)
@@ -75,6 +76,7 @@ public static class Rules
                 break;
             case "style":
                 Bool(input, "learnFromMessages");
+                Bool(input, "usePersonalCorpus");
                 Enum(input, "preferredLength", "SHORT MEDIUM AS_NEEDED"); Enum(input, "emojiPreference", "AVOID NEUTRAL SPARSE");
                 foreach (var tone in Strings(input, "preferredTones", 3)) if (!"NEUTRAL WARM PLAYFUL DIRECT FORMAL".Split(' ').Contains(tone)) throw Api.Invalid("表达语气无效");
                 Strings(input, "avoidPatterns", 20, 100); Strings(input, "examplePhrases", 10, 500); break;

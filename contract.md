@@ -1319,7 +1319,7 @@ Gateway、C# 服务和 Python 服务必须分别执行以下检查：
 - 若某次已保存分析引用了该记录，ContactContextService 必须请求 AdviceService 删除对应分析结果和反馈，避免原始内容残留在观察或建议中；
 - `DELETE /contacts/{contactId}` 删除该对象的背景、消息、事件、偏好、分析、反馈和关联结果；
 - `DELETE /me/context-data` 删除全部对象、社交背景与分析数据，但保留用户表达习惯；
-- `DELETE /me/expression-style` 单独删除表达习惯；两个删除操作都完成后，产品保存的用户个人内容即被清空；
+- `DELETE /me/expression-style` 单独删除表达习惯；个人语料库需另行 `DELETE /me/voice-corpus`。这三类内容分别清理，本地模型凭证也有独立删除接口；
 - 删除流程按 §5.2 执行；AdviceService 在跨服务清理完成前不得把结果继续返回给用户；
 - AnalysisService 没有用户数据持久化职责；日志和供应商侧数据清理不属于任一业务数据库，但必须写入隐私保留策略；
 - 删除为立即对用户不可见；备份、缓存和第三方模型供应商的删除时限属于 `OWNER-TBD`，上线前必须写入隐私说明；
@@ -1498,3 +1498,29 @@ AnalysisService 在同一 60 秒分析预算内，至多增加一次包含所选
 Windows x64 桌面入口为 `betweenly://app`，由 Electron 主进程提供打包静态文件及公共 API 代理。渲染进程启用 sandbox、contextIsolation，关闭 Node integration；仅可请求固定应用源，无任意文件、任意上游地址或任意命令的 IPC 接口。桌面模式使用 Production 环境、独立数据目录和动态分配的回环端口，禁用开发身份；Gateway 的 DesktopAuth 显式开启时，只允许回环来源加每次启动随机生成的 `X-Desktop-Token`，绑定固定的本地用户 ID。主进程过滤客户端身份头后注入令牌，Gateway 再把本地身份转换为原有可信用户身份并剥离桌面令牌。INTERNAL 服务身份校验保持原样，其他非开发、非桌面模式继续拒绝公共请求。
 
 桌面使用打包的 Python 和微信助手 EXE；.NET 服务及助手以 framework-dependent 模式发布，共用程序目录内的一份私有 .NET 8、ASP.NET Core 与 Windows Desktop 运行环境，通过 DOTNET_ROOT / DOTNET_ROOT_X64 指定，无须系统预装 .NET。监督进程先绑定 Windows Job，再启动自动继承该进程组的服务及后代进程；窗口退出、主进程断开或监督进程被终止时，一并清理该应用的服务，不通过全局进程名或固定端口终止其他程序。安装版数据、DPAPI 密钥和日志位于当前 Windows 用户的 `%APPDATA%/Betweenly/`，独立于网页开发版 `.runtime/mvp/data/`；不自动迁移，也不把项目 .env、聊天数据或开发环境加入分发包。
+
+
+## 个人语料库增补（2026-10-28）
+
+公共端点统一经 Gateway，ExpressionStyleService 所有权按可信用户身份隔离。样例结构为 `{text, situation}`，text 为 1–500 个 UTF-16 字符，situation 为 GENERAL / DAILY / CARE / HUMOR / INVITATION / APOLOGY / BOUNDARY。存储对象增加 `sampleId/version/createdAt/updatedAt`，不记录对方身份和聊天事实。疑似常见 API 密钥或私钥的文本返回 400，不回显文本。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| GET | `/api/v1/me/voice-corpus` | `{sampleCount,capacity:10000,revision,privacyVersion}` |
+| GET | `/api/v1/me/voice-corpus/samples` | cursor/limit 分页（1–100），与其他列表信封相同 |
+| POST | `/api/v1/me/voice-corpus/imports` | `{confirmedOwnWords:true,samples:[{text,situation}]}`，每批 1–500 条；同一事务校验、NFKC/空白规范化去重、容量检查与写入；返回状态字段和 importedCount/duplicateCount，201 |
+| PUT | `/api/v1/me/voice-corpus/samples/{sampleId}` | `{text,situation}` 完整替换；必需 If-Match，返回新版本；外部用户 404，旧版本 409，重复样例 422 |
+| DELETE | `/api/v1/me/voice-corpus/samples/{sampleId}` | 必需 If-Match，204；外部用户 404，旧版本 409 |
+| DELETE | `/api/v1/me/voice-corpus` | JSON `{confirmation:"删除"}`，显式清空当前用户语料，204 |
+
+所有写入受 1MiB 请求上限约束。重复导入可安全重试，重复键为规范化文本与 situation；不替换用户原始标点和大小写。容量溢出或批次无效不写任何行。多批导入可能部分完成，客户端显示已完成数，可重试去重。修改和删除仅影响当前用户。
+
+`expressionStyle.usePersonalCorpus` 可选，遗漏默认 true，false 不发语料。原有 `learnFromMessages` 只控制当前联系人中的本人发言参考，两者独立。一般反馈仅存反馈，只有用户通过语料导入确认才学习修改后的文案。
+
+INTERNAL 仅允许 AdviceService：`POST /internal/v1/voice-queries` 输入 `{userGoal,query}`，query 最多 4000 字符，返回 `{revision,privacyVersion,sampleCount,medianLength,examples:[{sampleId,text,situation}]}`；examples 最多 8 条，由当前用户语料中选择。`GET /internal/v1/users/{userId}/voice-corpus` 返回状态，路径用户必须等于可信身份。公共请求不得直接访问这两个接口。
+
+AdviceService 将上述有界对象放入 AnalysisInput.context.personalVoice；ContextQuery 原事实结构不变，个人语料不增加 evidenceRefs 的允许集合。Python 严格验证字段、数量、类型、样例 ID 和中位长度。生成和 Jev 都只把其视为不可信风格数据；手动偏好、事实与边界优先。ASSESS_AFFINITY 不查询或发送语料。引擎版本在使用样例时追加 personal-voice-1.0。
+
+新增/修改/删除增加 revision；修改/删除另增加 privacyVersion。生成完成前再次读取并比较完整个人语料参考，变化返回 409。建议行在内部保存使用时的 privacyVersion（不改变公共 Advice 字段）；旧版本经历史/详情/幂等重放访问时返回 404，列表跳过。当前按用户整库版本保守失效，新增不使旧建议失效；未使用语料的建议不受影响。失效不等同于物理删除旧建议，用户仍通过建议删除或清空背景清理。详细限制见 docs/PERSONAL_VOICE.md。
+
+本地 MVP 启动器显式设置 VITE_LOCAL_MVP=1 与对应 Gateway 代理；页面只在 Vite DEV 且浏览器主机为回环地址时启用旧开发身份入口。生产构建、正常账号网页版和 Electron 身份流程保持各自校验。项目内存在 .runtime/dotnet-sdk 时优先使用该 SDK。

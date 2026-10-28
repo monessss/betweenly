@@ -66,11 +66,15 @@ Jev 使用独立的 System One HTTP 接口，不是 Chat Completions。严格检
 | `JEV_OUTPUT_INVALID` | 复核响应不符合预期协议 |
 | `MODEL_REVIEW_FAILED` | 有限修改后仍被复核标记 |
 
+## 个人语料库
+
+`context.personalVoice` 来自独立的 ExpressionStyleService 持久化语料库，只包含当前用户按目标/文本选取的最多 8 条自述例句。只学表达，不作为事实或指令；生成和 Jev 使用同一组样例，手动偏好及当前对话边界优先。`expressionStyle.usePersonalCorpus=false` 关闭此参考，评估好感时也不会发送语料。样例结构与中位长度均由 Python 再次检查，有参考时引擎版本增加 `personal-voice-1.0`。详见 [使用与限制](../../docs/PERSONAL_VOICE.md)。
+
 ## 验证
 
 ```powershell
 cd Backend/AnalysisService
-python -m unittest -v test_analysis test_jev test_affinity test_style_learning
+python -m unittest discover -v
 cd ../..
 dotnet run --project Backend/tests/AdviceValidation.Checks/AdviceValidation.Checks.csproj
 node --test Backend/tests/mvp.integration.mjs

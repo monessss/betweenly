@@ -70,6 +70,7 @@ const provider = createServer(async (req, res) => {
   if (q === 'EXTRA_FIELD') output.secret = 'not permitted';
   if (q === 'BAD_UNION') output.status = 'NEEDS_CONTEXT';
   if (q === 'VOICE_BAD_SOURCE') { const reference='message:'+input.context.writingStyle.sourceMessageIds[0];output.contextUsedRefs=[reference];output.observations[0].evidenceRefs=[reference]; }
+  if (q === 'CORPUS_BAD_SOURCE') { const reference='voice:'+input.context.personalVoice.examples[0].sampleId;output.contextUsedRefs=[reference];output.observations[0].evidenceRefs=[reference]; }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: q === 'INVALID_JSON' ? '{' : JSON.stringify(output) } }] }));
 });
@@ -84,6 +85,7 @@ const jevProvider = createServer(async (req,res) => {
   assert.equal(request.state.context.messages.length,1,'Jev gets only the selected context');
   assert.ok(!raw.includes('test-only-key') && !raw.includes('jev-fixture-key'),'no provider credentials enter state');
   const q=request.state.specificQuestion;
+  if(q==='DUAL_PASS') assert.equal(request.state.context.personalVoice.examples[0].text,'行 那你先歇会');
   assert.equal(req.headers.authorization,'Bearer ' + (savedKeys[q]?.jev ?? 'jev-fixture-key'));
   assert.ok(!raw.includes('saved-fixture-'), 'saved credentials never enter model context');
   if(q==='DUAL_OUTAGE'){res.writeHead(503).end('{}');return;}
@@ -184,6 +186,58 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
     await api('/me/expression-style', 'PUT', { ...styleInput, preferredTones: ['WARM', 'WARM'] }, {}, 400);
     const style = (await api('/me/expression-style', 'PUT', styleInput)).data; assert.equal(style.version, 1);
     await api('/me/expression-style', 'PUT', styleInput, version(8), 409);
+  });
+  await t.test('personal corpus: atomic import, deduplication, isolation, contextual selection, opt-out and privacy invalidation', async () => {
+    const identity = randomUUID();
+    const call = (path, method='GET', body, headers={}, expected=200) => api(path,method,body,headers,expected,identity);
+    const endpoint='/me/voice-corpus';
+    assert.equal((await call(endpoint)).data.sampleCount,0);
+    await call(endpoint+'/imports','POST',{confirmedOwnWords:false,samples:[{text:'那你先歇会',situation:'GENERAL'}]}, {},422);
+    await call(endpoint+'/imports','POST',{confirmedOwnWords:true,samples:[{text:'那你先歇会',situation:'GENERAL'},{text:'bad',situation:'INVALID'}]}, {},400);
+    assert.equal((await call(endpoint)).data.sampleCount,0);
+    const batch={confirmedOwnWords:true,samples:[{text:'那你先歇会',situation:'GENERAL'},{text:'那你先歇会',situation:'GENERAL'},{text:'周末出来走走？',situation:'INVITATION'},{text:'行 那你先休息',situation:'CARE'}]};
+    const first=(await call(endpoint+'/imports','POST',batch,{},201)).data;
+    assert.equal(first.importedCount,3);assert.equal(first.duplicateCount,1);
+    assert.equal((await call(endpoint+'/imports','POST',batch,{},201)).data.importedCount,0);
+    await stop(); await start();
+    assert.equal((await call(endpoint)).data.sampleCount,3,'corpus survives service restart');
+    await call(endpoint+'/imports','POST',{confirmedOwnWords:true,samples:[{text:'sk-'+'x'.repeat(25),situation:'GENERAL'}]}, {},400);
+    await call(endpoint+'/imports','POST',{confirmedOwnWords:true,samples:Array(501).fill(batch.samples[0])}, {},400);
+    assert.equal((await api(endpoint)).data.sampleCount,0);
+    const page=(await call(endpoint+'/samples?limit=1'));assert.equal(page.data.length,1);assert.ok(page.meta.nextCursor);
+    const saved=(await call(endpoint+'/samples')).data;
+    await api(endpoint+'/samples/'+saved[0].sampleId,'DELETE',undefined,version(1),404);
+    await call(endpoint+'/samples/'+saved[0].sampleId,'PUT',{text:'新版',situation:'GENERAL'},version(9),409);
+    const target=(await call('/contacts','POST',contactInput('语料测试'),{},201)).data;
+    const m=(await call(`/contacts/${target.contactId}/messages`,'POST',messageInput('今天搞砸了，很难受'),{},201)).data;
+    const advicePath=`/contacts/${target.contactId}/advice-requests`;
+    const run=async question => (await call(advicePath,'POST',adviceInput(m.messageId,question),{'Idempotency-Key':randomUUID()},201)).data;
+    const result=await run('CORPUS_TEST');
+    const profile=latestInput.context.personalVoice;
+    assert.equal(profile.sampleCount,3);assert.ok(profile.examples.length<=8);
+    assert.equal(profile.examples[0].situation,'CARE');
+    assert.ok(profile.examples.every(s=>s.situation!=='INVITATION'));
+    assert.ok(result.contextUsedRefs.every(r=>r.startsWith('message:')));
+    await call(advicePath,'POST',adviceInput(m.messageId,'CORPUS_BAD_SOURCE'),{'Idempotency-Key':randomUUID()},502);
+    const beforeRace=calls;
+    const racing=call(advicePath,'POST',adviceInput(m.messageId,'RACE'),{'Idempotency-Key':randomUUID()},409);
+    while(calls===beforeRace) await new Promise(resolve=>setTimeout(resolve,10));
+    await call(endpoint+'/imports','POST',{confirmedOwnWords:true,samples:[{text:'别急 慢慢来',situation:'GENERAL'}]}, {},201);
+    await racing;
+    await call(endpoint+'/imports','POST',{confirmedOwnWords:true,samples:[{text:'这事慢慢来',situation:'GENERAL'}]}, {},201);
+    await call('/advice-requests/'+result.requestId);
+    await call(endpoint+'/samples/'+saved[0].sampleId,'PUT',{text:'新版表达',situation:'GENERAL'},version(1));
+    await call('/advice-requests/'+result.requestId,'GET',undefined,{},404);
+    const enabled=await run('CORPUS_ENABLED');
+    let style=(await call('/me/expression-style','PUT',{...styleInput,usePersonalCorpus:false})).data;
+    const disabled=await run('CORPUS_DISABLED');assert.ok(!Object.hasOwn(latestInput.context,'personalVoice'));
+    await call('/me/expression-style','PUT',{...styleInput,usePersonalCorpus:true},version(style.version));
+    await call(endpoint,'DELETE',{confirmation:'wrong'},{},400);
+    await call(endpoint,'DELETE',{confirmation:'删除'},{},204);
+    assert.equal((await call(endpoint)).data.sampleCount,0);
+    await call('/advice-requests/'+enabled.requestId,'GET',undefined,{},404);
+    await call('/advice-requests/'+disabled.requestId);
+    await call('/contacts/'+target.contactId,'DELETE',undefined,version(target.version),204);
   });
   await t.test('unknown contact and cross-contact evidence never reach provider', async () => {
     const before = calls;
@@ -339,9 +393,11 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
     const record=(await api(`/contacts/${target.contactId}/messages`,'POST',messageInput('周末一起去看展吧？'),{},201)).data;
     const own=(await api(`/contacts/${target.contactId}/messages`,'POST',{...messageInput('我觉得对方喜欢我。'),sender:'USER'},{},201)).data;
     const path=`/contacts/${target.contactId}/advice-requests`;
+    await api('/me/voice-corpus/imports','POST',{confirmedOwnWords:true,samples:[{text:'行 那你先歇会',situation:'GENERAL'}]}, {},201);
     const body={...adviceInput(record.messageId),userGoal:'ASSESS_AFFINITY'};
     const headers={'Idempotency-Key':randomUUID()};
     const result=(await api(path,'POST',body,headers,201)).data;
+    assert.ok(!Object.hasOwn(latestInput.context,'personalVoice'),'affinity mode never receives corpus examples');
     assert.equal(result.affinityAssessment.score,68);assert.equal(result.replyOptions.length,0);assert.equal(result.recommendation.actionType,'NO_ACTION');
     assert.equal((await api(path,'POST',body,headers,201)).data.requestId,result.requestId);
     assert.ok((await api(`/contacts/${target.contactId}/advice-requests`)).data.some(item=>item.affinityAssessment?.score===68));
@@ -357,6 +413,7 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
     await api('/messages/'+record.messageId,'DELETE',undefined,version(record.version),204);
     await api('/advice-requests/'+result.requestId,'GET',undefined,{},404);
     await api('/contacts/'+target.contactId,'DELETE',undefined,version(target.version),204);
+    await api('/me/voice-corpus','DELETE',{confirmation:'删除'},{},204);
   });
   await t.test('clear user data preserves style and leaves other users isolated', async () => {
     const preservedStyle=(await api('/me/expression-style')).data;
@@ -375,6 +432,7 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
     const target=(await api('/contacts','POST',contactInput('双模型测试'),{},201)).data;
     const record=(await api(`/contacts/${target.contactId}/messages`,'POST',messageInput('今天工作有点累。'),{},201)).data;
     const path=`/contacts/${target.contactId}/advice-requests`;
+    await api('/me/voice-corpus/imports','POST',{confirmedOwnWords:true,samples:[{text:'行 那你先歇会',situation:'GENERAL'}]}, {},201);
     let before=calls, reviews=reviewCalls;
     const body=adviceInput(record.messageId,'DUAL_PASS'), headers={'Idempotency-Key':randomUUID()};
     const output=(await api(path,'POST',body,headers,201)).data;
@@ -394,6 +452,7 @@ test('MVP: real service chain against isolated DeepSeek protocol fixture', { tim
       assert.equal(failure.error.code,code);
     }
     await api('/contacts/'+target.contactId,'DELETE',undefined,version(target.version),204);
+    await api('/me/voice-corpus','DELETE',{confirmation:'删除'},{},204);
   });
   await t.test('UI credentials persist encrypted, stay user-scoped and drive both providers without env keys', { skip: process.platform !== 'win32' }, async () => {
     await stop();

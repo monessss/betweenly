@@ -31,6 +31,13 @@ const python = config.BETWEENLY_PYTHON || (existsSync(bundledPython) ? bundledPy
 const childEnv = { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1', DOTNET_NOLOGO: '1',
   DOTNET_CLI_HOME: join(root, '.runtime/dotnet'),
   ASPNETCORE_ENVIRONMENT: 'Development', DOTNET_ENVIRONMENT: 'Development' };
+const workspaceDotnet = join(root, '.runtime', 'dotnet-sdk');
+if (existsSync(join(workspaceDotnet, process.platform === 'win32' ? 'dotnet.exe' : 'dotnet'))) {
+  childEnv.DOTNET_ROOT = workspaceDotnet;
+  childEnv.DOTNET_ROOT_X64 = workspaceDotnet;
+  const pathKey = Object.keys(childEnv).find(key => key.toUpperCase() === 'PATH') || 'PATH';
+  childEnv[pathKey] = workspaceDotnet + (process.platform === 'win32' ? ';' : ':') + (childEnv[pathKey] || '');
+}
 // Even when configured as parent environment variables, provider secrets belong only to Python.
 delete childEnv.DEEPSEEK_API_KEY;
 delete childEnv.DEEPSEEK_MODEL;
@@ -138,7 +145,7 @@ try {
   if (!args.has('--no-frontend')) {
     if (await available(3000)) {
       const vite = join(root, 'frontend/node_modules/vite/bin/vite.js'); if (!existsSync(vite)) throw Error('Run npm ci in frontend first.');
-      launch(process.execPath, [vite, '--host', '127.0.0.1', '--port', '3000', '--strictPort'], join(root, 'frontend'), {}, 'frontend'); await wait('http://127.0.0.1:3000');
+      launch(process.execPath, [vite, '--host', '127.0.0.1', '--port', '3000', '--strictPort'], join(root, 'frontend'), { BETWEENLY_GATEWAY_URL: gatewayUrl, VITE_LOCAL_MVP: '1' }, 'frontend'); await wait('http://127.0.0.1:3000');
     } else console.log('Port 3000 is already in use; existing frontend left running.');
   }
   timer = setInterval(() => { if (existsSync(join(runtime, 'stop'))) void stop(); }, 500);

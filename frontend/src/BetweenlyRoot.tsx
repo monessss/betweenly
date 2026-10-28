@@ -25,7 +25,9 @@ export default function BetweenlyRoot() {
     try { await client.logout(); } catch { message = '已清除当前页面的登录状态'; }
     setProfile(null); setNotice(message); setView('login'); window.location.hash = '/login';
   }
-  if (isDesktop) return <App />;
+  // Explicit local development mode; production builds always retain login.
+  const localMvp = import.meta.env.DEV && import.meta.env.VITE_LOCAL_MVP === '1' && ['127.0.0.1', 'localhost', '[::1]'].includes(window.location.hostname);
+  if (isDesktop || localMvp) return <App />;
   if (!profile && view === 'forgot-password') return <ForgotPasswordPage client={client} onLogin={() => navigate('login')} onComplete={() => { navigate('login'); setNotice('密码已更新，请使用新密码登录'); }} />;
   if (!profile) return <AuthPage view={view === 'register' ? 'register' : 'login'} client={client} notice={notice} onNavigate={navigate} onAuthenticated={account => { setProfile(account); setNotice(''); window.location.hash = account.role === 'ADMIN' ? '/admin' : '/workspace'; document.title = 'Betweenly · 之间'; }} />;
   if (profile.role === 'ADMIN') return <AdminPanel api={client} profile={profile} onLogout={logout} onSelfReset={async () => { await logout(); setNotice('密码已更新，请重新登录'); }} />;
